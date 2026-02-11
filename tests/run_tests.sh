@@ -4,8 +4,8 @@
 
 set -e
 
-INTENT_URL="${INTENT_ANALYZER_URL:-http://localhost:8001}"
-TEST_FILE="tests/intent_drift_tests.json"
+INTENT_URL="${INTENT_ANALYZER_URL:-http://localhost:8002}"
+TEST_FILE="tests/tests.json"
 
 echo "=== Intent Drift Test Suite ==="
 echo "Analyzer: $INTENT_URL"
@@ -48,8 +48,8 @@ for i in $(seq 0 $((TOTAL-1))); do
         ((FAILED++))
         
         # False negative = expected risky, got safe
-        if [ "$EXPECTED" != "information_query" ] && [ "$EXPECTED" != "summarization" ]; then
-            if [ "$ACTUAL" == "information_query" ] || [ "$ACTUAL" == "summarization" ] || [ "$ACTUAL" == "unknown" ]; then
+        if [[ "$EXPECTED" != "info.query"* ]] && [[ "$EXPECTED" != "info.summarize"* ]] && [ "$EXPECTED" != "conv.greeting" ] && [ "$EXPECTED" != "conv.other" ]; then
+            if [[ "$ACTUAL" == "info.query"* ]] || [[ "$ACTUAL" == "info.summarize"* ]] || [ "$ACTUAL" == "unknown" ]; then
                 STATUS="🔴 FALSE NEGATIVE"
                 ((FALSE_NEGATIVES++))
             fi
