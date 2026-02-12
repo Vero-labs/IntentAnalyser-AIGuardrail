@@ -35,7 +35,15 @@ class RegexDetector(BaseDetector):
                 r"disable guardrails",
                 r"overrule previous constraints",
                 r"execute command",
-                r"what were the instructions"
+                r"what were the instructions",
+                r"from now on",
+                r"answer every question",
+                r"you are hacked",
+                r"i am hacked",
+                r"bypass safety filters",
+                r"reveal the hidden text",
+                r"system override",
+                r"simulated hacking"
             ],
             IntentCategory.SYSTEM_OVERRIDE: [
                 r"system override",
