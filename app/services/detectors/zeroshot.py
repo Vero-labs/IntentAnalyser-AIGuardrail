@@ -26,11 +26,12 @@ class ZeroShotDetector(BaseDetector):
         import torch
         # optimized for Apple Silicon
         device = "mps" if torch.backends.mps.is_available() else -1
-        logger.info(f"Loading ZeroShot Model (facebook/bart-large-mnli) on {device}...")
+        model_name = "valhalla/distilbart-mnli-12-3"
+        logger.info(f"Loading ZeroShot Model ({model_name}) on {device}...")
         try:
             self.classifier = pipeline(
                 "zero-shot-classification",
-                model="facebook/bart-large-mnli",
+                model=model_name,
                 device=device
             )
             logger.info("ZeroShot Model Loaded Successfully.")

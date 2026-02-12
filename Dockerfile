@@ -29,7 +29,7 @@ ENV TRANSFORMERS_CACHE=/home/user/.cache/huggingface
 ENV HF_HOME=/home/user/.cache/huggingface
 
 # Pre-download models to the user's cache
-RUN python3 -c "from transformers import pipeline; pipeline('zero-shot-classification', model='facebook/bart-large-mnli')"
+RUN python3 -c "from transformers import pipeline; pipeline('zero-shot-classification', model='valhalla/distilbart-mnli-12-3')"
 RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 EXPOSE 8002
