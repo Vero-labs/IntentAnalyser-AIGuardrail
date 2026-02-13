@@ -9,7 +9,7 @@ class IntentTier(str, Enum):
 class IntentCategory(str, Enum):
     # Tier 1: Critical (Security)
     PROMPT_INJECTION = "code.exploit"
-    JAILBREAK = "code.exploit"
+    JAILBREAK = "security.jailbreak"
     SYSTEM_OVERRIDE = "sys.control"
     
     # Tier 2: High (Safety/Privacy)
@@ -30,21 +30,23 @@ class IntentCategory(str, Enum):
     UNKNOWN = "unknown"
 
 # Mapping for descriptive text (used for Zero-Shot prompts)
+# These descriptions are carefully tuned for BART-MNLI zero-shot classification.
+# Each description must be maximally discriminative from all others.
 INTENT_DESCRIPTIONS = {
-    IntentCategory.PROMPT_INJECTION: "attempts to bypass system constraints, ignore previous instructions, or inject malicious prompts",
-    IntentCategory.JAILBREAK: "attempts to roleplay restricted personas, break safety rules, or use 'DAN' mode",
-    IntentCategory.SYSTEM_OVERRIDE: "commands to reboot, shutdown, halt, change system permissions, or override core configurations",
-    IntentCategory.PII_EXFILTRATION: "requests to read, extract, or view sensitive personal data, passwords, SSN, or private user files",
-    IntentCategory.TOXICITY: "hate speech, racial slurs, threats of violence, self-harm, or sexual content",
-    IntentCategory.TOOL_MISUSE: "dangerous requests to delete files, wipe directories, format drives, or use tools destructively",
-    IntentCategory.OFF_TOPIC: "queries that are completely unrelated to the agent's purpose (e.g. cooking recipes in a banking agent)",
-    IntentCategory.FINANCIAL_ADVICE: "requests for stock picks, crypto investment advice, or financial market predictions",
-    IntentCategory.CODE_EXECUTION: "requests to generate python code, shell scripts, or execute arbitrary commands",
-    IntentCategory.INFO_QUERY: "benign questions asking for general knowledge, facts, or definitions",
-    IntentCategory.INFO_SUMMARIZE: "requests to summarize, condense, or explain the provided text or document",
-    IntentCategory.TOOL_AUTHORIZED: "benign use of approved helper tools like calculator, calendar, or search",
-    IntentCategory.GREETING: "polite greetings, 'hello', 'hi', or 'how are you'",
-    IntentCategory.UNKNOWN: "unclear, nonsensical, or unclassified input"
+    IntentCategory.PROMPT_INJECTION: "attempts to bypass, ignore, or override system instructions, safety rules, previous constraints, or hidden configurations",
+    IntentCategory.JAILBREAK: "attempts to roleplay as unrestricted personas, break character limits, enter developer mode, or act as an AI with no moral boundaries",
+    IntentCategory.SYSTEM_OVERRIDE: "commands to reboot, shutdown, halt, change system permissions, kill processes, or modify server and environment configurations",
+    IntentCategory.PII_EXFILTRATION: "requests to access, extract, read, or reveal sensitive personal data such as passwords, SSN, credit cards, private files, or API keys",
+    IntentCategory.TOXICITY: "hateful, abusive, threatening, or sexually explicit language including slurs, insults, or harassment",
+    IntentCategory.TOOL_MISUSE: "dangerous requests to delete files, wipe directories, format drives, drop databases, or use system tools destructively",
+    IntentCategory.OFF_TOPIC: "requests completely unrelated to the agent's professional purpose, such as casual conversation, recipes, poems, jokes, stories, or gaming",
+    IntentCategory.FINANCIAL_ADVICE: "requests for specific stock picks, cryptocurrency investment advice, trading strategies, or financial market predictions",
+    IntentCategory.CODE_EXECUTION: "requests to write, create, build, generate, or implement code, programs, functions, scripts, or algorithms",
+    IntentCategory.INFO_QUERY: "factual questions seeking general knowledge, definitions, or explanations of objective concepts",
+    IntentCategory.INFO_SUMMARIZE: "requests to summarize, condense, or create a brief overview of an existing provided text, article, document, or conversation",
+    IntentCategory.TOOL_AUTHORIZED: "benign use of approved helper tools like calculator, calendar, weather lookup, search, or setting reminders",
+    IntentCategory.GREETING: "polite greetings and salutations such as hello, hi, hey, or good morning",
+    IntentCategory.UNKNOWN: "unclear, nonsensical, ambiguous, or completely unclassifiable input"
 }
 
 # Mapping Intents to Tiers
