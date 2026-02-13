@@ -57,6 +57,11 @@ DOMAIN_EXAMPLES: Dict[Domain, list] = {
         "Current geopolitical tensions",
         "What is the electoral college?",
         "Explain left wing vs right wing politics",
+        "National leadership hierarchy",
+        "Who leads the country",
+        "Chain of command in government",
+        "Cabinet structure and ministers",
+        "Government officials and their roles",
     ],
     Domain.HEALTHCARE: [
         "What are the symptoms of diabetes?",
@@ -171,6 +176,20 @@ class DomainClassifier(BaseClassifier):
 
         logger.info(f"DomainClassifier: Encoded {len(self.description_embeddings)} domain descriptions + {len(self.example_embeddings)} example sets.")
 
+    def _score_text(self, embedding) -> Dict[str, float]:
+        """Score a single embedding against all domain centroids."""
+        scores: Dict[str, float] = {}
+        for domain in Domain:
+            scores_to_consider = []
+            if domain in self.description_embeddings:
+                desc_sim = float(util.cos_sim(embedding, self.description_embeddings[domain]).max())
+                scores_to_consider.append(desc_sim)
+            if domain in self.example_embeddings:
+                example_sim = float(util.cos_sim(embedding, self.example_embeddings[domain]).max())
+                scores_to_consider.append(example_sim)
+            scores[domain.value] = max(scores_to_consider) if scores_to_consider else 0.0
+        return scores
+
     def classify(self, text: str) -> Dict[str, Any]:
         if not self.model:
             return {
@@ -180,41 +199,60 @@ class DomainClassifier(BaseClassifier):
                 "metadata": {"error": "Model not loaded"},
             }
 
-        embedding = self.model.encode(text)
+        # ── Multi-window scoring ──────────────────────────────────────────
+        # Adversarial framing attacks prepend innocent context ("For hiring
+        # research purposes...") to shift the embedding toward a wrong domain.
+        # By also scoring the latter half of the prompt, we ensure the actual
+        # content signal is not diluted by a framing prefix.
+        #
+        # Strategy: score FULL prompt + LATTER HALF, take max per domain.
+        # This is generic — works against any prefix-based framing attack.
 
+        words = text.split()
+        windows = [text]  # Always include full text
+        if len(words) > 6:
+            # Latter half: skip the framing prefix
+            latter_half = " ".join(words[len(words) // 2:])
+            windows.append(latter_half)
+
+        embeddings = [self.model.encode(w) for w in windows]
+
+        # Score each window and take max per domain
         all_scores: Dict[str, float] = {}
+        for emb in embeddings:
+            window_scores = self._score_text(emb)
+            for domain_val, score in window_scores.items():
+                all_scores[domain_val] = max(all_scores.get(domain_val, 0.0), score)
+
+        # Round and find best
+        all_scores = {k: round(v, 4) for k, v in all_scores.items()}
         best_domain = Domain.GENERAL_KNOWLEDGE
         best_score = 0.0
+        for domain_val, score in all_scores.items():
+            if score > best_score:
+                best_score = score
+                best_domain = Domain(domain_val)
 
-        for domain in Domain:
-            # Score = max of (description similarity, best example similarity)
-            scores_to_consider = []
-
-            # Description similarity
-            if domain in self.description_embeddings:
-                desc_sim = float(util.cos_sim(embedding, self.description_embeddings[domain]).max())
-                scores_to_consider.append(desc_sim)
-
-            # Example similarity (max across all examples)
-            if domain in self.example_embeddings:
-                example_sim = float(util.cos_sim(embedding, self.example_embeddings[domain]).max())
-                scores_to_consider.append(example_sim)
-
-            # Take the best signal from either source
-            domain_score = max(scores_to_consider) if scores_to_consider else 0.0
-            all_scores[domain.value] = round(domain_score, 4)
-
-            if domain_score > best_score:
-                best_score = domain_score
-                best_domain = domain
+        # ── Domain competition detection (observability) ─────────────────
+        # When top-2 domains are close, it's a signal of ambiguity or
+        # adversarial framing. Surface as metadata for downstream consumers.
+        sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
+        metadata: Dict[str, Any] = {}
+        if len(sorted_scores) >= 2:
+            gap = sorted_scores[0][1] - sorted_scores[1][1]
+            if gap < 0.15:
+                metadata["domain_competition"] = True
+                metadata["competing_domains"] = [sorted_scores[0][0], sorted_scores[1][0]]
+                metadata["competition_gap"] = round(gap, 4)
 
         # Log top 3
-        sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-        logger.info(f"DomainClassifier Top 3: {', '.join(f'{k}={v:.3f}' for k, v in sorted_scores)}")
+        logger.info(f"DomainClassifier Top 3: {', '.join(f'{k}={v:.3f}' for k, v in sorted_scores[:3])}")
+        if len(windows) > 1:
+            logger.debug(f"DomainClassifier used {len(windows)} scoring windows")
 
         return {
             "result": best_domain,
             "confidence": best_score,
             "all_scores": all_scores,
-            "metadata": {},
+            "metadata": metadata,
         }

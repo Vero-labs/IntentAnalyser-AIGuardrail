@@ -118,6 +118,7 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
 
     # Debug trace (only if requested)
     if debug:
+        domain_meta = domain_result.get("metadata", {})
         response_data["trace"] = {
             "regex_triggered": risk_result["regex_triggered"],
             "regex_signals": risk_result["regex_signals"],
@@ -125,6 +126,9 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
             "risk_detection_path": risk_result["detection_path"],
             "action_all_scores": action_result["all_scores"],
             "domain_all_scores": domain_result["all_scores"],
+            "domain_competition": domain_meta.get("domain_competition", False),
+            "competing_domains": domain_meta.get("competing_domains", []),
+            "competition_gap": domain_meta.get("competition_gap"),
             "dominant_layer": "risk" if risk_result["regex_triggered"] else (
                 "action" if action_confidence > domain_confidence else "domain"
             ),
