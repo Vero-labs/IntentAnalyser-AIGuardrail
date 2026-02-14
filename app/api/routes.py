@@ -10,42 +10,63 @@ Output is flat: action, domain, risk_signals, confidence, ambiguity.
 Trace available via ?debug=true.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from app.schemas.intent import (
-    IntentRequest, IntentResponse, IntentResponseDebug, DetectorTrace,
+    IntentRequest, IntentResponse, IntentResponseDebug,
 )
-from app.services.classifiers.risk_detector import RiskDetector
-from app.services.classifiers.action_detector import ActionDetector
-from app.services.classifiers.domain_classifier import DomainClassifier
-from app.services.evaluation_engine import evaluate, AMBIGUITY_LOW, AMBIGUITY_HIGH
-from app.core.axes import RiskSignal
-import time
+from app.services.detectors.zeroshot import ZeroShotDetector
+from app.core.cache import CacheService
+from app.core.rate_limit import RateLimiter
+from app.services.risk_engine import RiskEngine
+from app.services.priority_engine import PriorityEngine
+from app.services.detectors.regex import RegexDetector
+from app.services.detectors.semantic import SemanticDetector
+from app.services.policy_engine import PolicyEngine
+from app.core.taxonomy import IntentCategory, IntentTier, TIER_MAPPING
 import asyncio
 import hashlib
 import logging
+import time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 classifiers = {}
+cache_service = CacheService()
+rate_limiter = RateLimiter(requests_per_minute=6000)
 
 @router.on_event("startup")
 async def startup_event():
-    logger.info("Initializing Tri-Axis Classifiers...")
-    classifiers["risk"]   = RiskDetector()
-    classifiers["action"] = ActionDetector()
-    classifiers["domain"] = DomainClassifier()
-    await classifiers["risk"].load()
-    await classifiers["action"].load()
-    await classifiers["domain"].load()
-    logger.info("All Tri-Axis Classifiers Initialized.")
+    logger.info("Initializing Classifiers...")
+    classifiers["regex"] = RegexDetector()
+    classifiers["semantic"] = SemanticDetector()
+    classifiers["zeroshot"] = ZeroShotDetector()
+    
+    await classifiers["regex"].load()
+    await classifiers["semantic"].load()
+    await classifiers["zeroshot"].load()
+    logger.info("Classifiers Initialized.")
+
+# Engines
+risk_engine = RiskEngine()
+priority_engine = PriorityEngine()
+policy_engine = PolicyEngine()
 
 
-CACHE = {}
-MAX_CACHE_SIZE = 500
+def _map_intent_to_domain(intent: IntentCategory) -> str:
+    """Helper to map intent category to policy domain."""
+    val = intent.value
+    if val.startswith("code.") or val.startswith("sys.") or val.startswith("tool."):
+        return "technical"
+    if val.startswith("security."):
+        return "security"
+    if val == "policy.financial_advice":
+        return "finance"
+    if val.startswith("info.") or val.startswith("conv."):
+        return "general_knowledge"
+    return "unknown"
 
-
-@router.post("/intent")
+@router.post("/intent", dependencies=[Depends(rate_limiter)])
 async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
     start_time = time.time()
 
@@ -57,89 +78,98 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
         raise HTTPException(status_code=400, detail="Text or messages required")
 
     # Cache lookup
-    text_hash = hashlib.md5(input_text.encode()).hexdigest()
-    if text_hash in CACHE:
-        cached = CACHE[text_hash]
+    cached = cache_service.get(input_text)
+    if cached:
         cached["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
         return cached
 
-    # ── Layer A: Risk Detector (first, always) ────────────────────────────
-    risk_result = classifiers["risk"].classify(input_text)
-    risk_signals = risk_result["signals"]
-    risk_score = risk_result["risk_score"]
+    # 1. Run Detectors in Parallel
+    regex_result = classifiers["regex"].detect(input_text)
+    semantic_result = classifiers["semantic"].detect(input_text)
+    zeroshot_result = classifiers["zeroshot"].detect(input_text)
+    
+    # Placeholder for Keyword
+    keyword_result = {"detected": False, "score": 0.0, "intent": None}
 
-    # ── Layer B + C: Action + Domain (parallel, independent) ──────────────
-    action_result, domain_result = await asyncio.gather(
-        asyncio.to_thread(classifiers["action"].classify, input_text),
-        asyncio.to_thread(classifiers["domain"].classify, input_text),
+    # 2. Priority Resolution (Hierarchical)
+    # Collect all detected intents
+    candidates = []
+    if regex_result["detected"]:
+        candidates.append({"intent": regex_result["intent"], "score": regex_result["score"], "source": "regex"})
+    if semantic_result["detected"]:
+        candidates.append({"intent": semantic_result["intent"], "score": semantic_result["score"], "source": "semantic"})
+    if zeroshot_result["detected"]:
+        candidates.append({"intent": zeroshot_result["intent"], "score": zeroshot_result["score"], "source": "zeroshot"})
+    
+    # If no candidates, fallback to Unknown
+    if not candidates:
+        candidates.append({"intent": IntentCategory.UNKNOWN, "score": 0.0, "source": "fallback"})
+
+    primary_intent, primary_score, sorted_candidates = priority_engine.resolve(candidates)
+    
+    # 3. Risk Calculation (R_total)
+    response_data = risk_engine.calculate_risk(
+        regex_result=regex_result,
+        semantic_result=semantic_result,
+        zeroshot_result=zeroshot_result,
+        keyword_result=keyword_result
     )
+    
+    # Update Intent/Tier based on Priority Engine
+    response_data.intent = primary_intent
+    response_data.tier = TIER_MAPPING.get(primary_intent, IntentTier.P4)
 
-    action = action_result["result"]
-    action_confidence = round(action_result["confidence"], 2)
-    domain = domain_result["result"]
-    domain_confidence = round(domain_result["confidence"], 2)
-
-    # ── Ambiguity detection ───────────────────────────────────────────────
-    min_conf = min(action_confidence, domain_confidence)
-    ambiguity = AMBIGUITY_LOW <= min_conf < AMBIGUITY_HIGH
-
-    # ── Evaluation (logged, not in response) ──────────────────────────────
-    role = "general"
-    eval_result = evaluate(
-        action=action,
-        action_confidence=action_confidence,
-        domain=domain,
-        domain_confidence=domain_confidence,
-        risk_signals=risk_signals,
-        risk_score=risk_score,
-        role=role,
-    )
-
-    logger.info(
-        f"RESULT: action={action.value}({action_confidence:.2f}) "
-        f"domain={domain.value}({domain_confidence:.2f}) "
-        f"risk={risk_score:.2f} signals=[{','.join(s.value for s in risk_signals)}] "
-        f"decision={eval_result.decision} reason={eval_result.reason}"
-    )
-
-    elapsed = round((time.time() - start_time) * 1000, 2)
-
-    # ── Build flat response ───────────────────────────────────────────────
-    response_data = {
-        "action": action.value,
-        "action_confidence": action_confidence,
-        "domain": domain.value,
-        "domain_confidence": domain_confidence,
-        "risk_signals": [s.value for s in risk_signals],
-        "risk_score": round(risk_score, 2),
-        "ambiguity": ambiguity,
-        "processing_time_ms": elapsed,
+    # 4. Policy Enforcement (Cedar)
+    # Map context
+    principal = "Role::\"general\""
+    
+    action_str = "Action::\"query\"" # Default
+    if "summarize" in primary_intent.value:
+        action_str = "Action::\"summarize\""
+    elif "generate" in primary_intent.value:
+        action_str = "Action::\"generate\""
+    elif "greeting" in primary_intent.value:
+        action_str = "Action::\"greet\""
+    
+    resource = "App::\"IntentAnalyzer\""
+    
+    context = {
+        "risk_score": int(response_data.risk_score * 100),
+        "tier": response_data.tier.value,
+        "has_critical_signal": response_data.tier == IntentTier.P0,
+        "domain": _map_intent_to_domain(primary_intent)
     }
+    
+    policy_result = policy_engine.evaluate(principal, action_str, resource, context)
+    
+    response_data.decision = policy_result.decision
+    response_data.reason = policy_result.reason
+    
+    elapsed = round((time.time() - start_time) * 1000, 2)
+    response_data.processing_time_ms = elapsed
 
-    # Debug trace (only if requested)
+    # Convert to dict for JSON response
+    resp_dict = response_data.dict()
+
+    # Debug trace
     if debug:
-        domain_meta = domain_result.get("metadata", {})
-        response_data["trace"] = {
-            "regex_triggered": risk_result["regex_triggered"],
-            "regex_signals": risk_result["regex_signals"],
-            "risk_semantic_scores": risk_result["semantic_scores"],
-            "risk_detection_path": risk_result["detection_path"],
-            "action_all_scores": action_result["all_scores"],
-            "domain_all_scores": domain_result["all_scores"],
-            "domain_competition": domain_meta.get("domain_competition", False),
-            "competing_domains": domain_meta.get("competing_domains", []),
-            "competition_gap": domain_meta.get("competition_gap"),
-            "dominant_layer": "risk" if risk_result["regex_triggered"] else (
-                "action" if action_confidence > domain_confidence else "domain"
-            ),
-            "pipeline_short_circuited": risk_result["regex_triggered"] and risk_score >= 1.0,
+        resp_dict["trace"] = {
+            "candidates": sorted_candidates,
+            "regex": regex_result,
+            "semantic": semantic_result,
+            "zeroshot": zeroshot_result,
+            "r_total": response_data.risk_score,
+            "policy": {
+                "decision": policy_result.decision,
+                "diagnostics": policy_result.diagnostics,
+                "context": context
+            }
         }
 
-    # Cache
-    if len(CACHE) < MAX_CACHE_SIZE:
-        CACHE[text_hash] = response_data
+    # Cache Write
+    cache_service.set(input_text, resp_dict)
 
-    return response_data
+    return resp_dict
 
 
 @router.get("/health")

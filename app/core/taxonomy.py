@@ -1,28 +1,36 @@
 from enum import Enum
 
 class IntentTier(str, Enum):
-    CRITICAL = "Critical"  # Security/Safety violations
-    HIGH = "High"          # Malicious/Privacy violations
-    MEDIUM = "Medium"      # Policy/Ambiguous violations
-    LOW = "Low"            # Benign/Standard requests
+    P0 = "P0_Critical"      # System Integrity (Injection, Jailbreak)
+    P1 = "P1_High"          # Data/Agent Security (PII, Tool Misuse)
+    P2 = "P2_Medium"        # Content Safety (Toxicity)
+    P3 = "P3_Low"           # Business Logic (Policy, Financial)
+    P4 = "P4_Info"          # Benign (Greeting, Query)
+
+    @property
+    def priority(self) -> int:
+        """Returns the numeric priority (0 is highest, 4 is lowest)."""
+        return int(self.value.split("_")[0][1])
 
 class IntentCategory(str, Enum):
-    # Tier 1: Critical (Security)
+    # Tier P0: Critical (System Integrity)
     PROMPT_INJECTION = "code.exploit"
     JAILBREAK = "security.jailbreak"
     SYSTEM_OVERRIDE = "sys.control"
     
-    # Tier 2: High (Safety/Privacy)
+    # Tier P1: High (Data & Agent Security)
     PII_EXFILTRATION = "info.query.pii"
-    TOXICITY = "safety.toxicity"
     TOOL_MISUSE = "tool.dangerous"
     
-    # Tier 3: Medium (Policy)
+    # Tier P2: Medium (Content Safety)
+    TOXICITY = "safety.toxicity"
+    
+    # Tier P3: Low (Business Logic / Policy)
     OFF_TOPIC = "conv.other"
     FINANCIAL_ADVICE = "policy.financial_advice"
     CODE_EXECUTION = "code.generate"
     
-    # Tier 4: Low (Benign)
+    # Tier P4: Info (Benign / Operational)
     INFO_QUERY = "info.query"
     INFO_SUMMARIZE = "info.summarize"
     TOOL_AUTHORIZED = "tool.safe"
@@ -30,8 +38,6 @@ class IntentCategory(str, Enum):
     UNKNOWN = "unknown"
 
 # Mapping for descriptive text (used for Zero-Shot prompts)
-# These descriptions are carefully tuned for BART-MNLI zero-shot classification.
-# Each description must be maximally discriminative from all others.
 INTENT_DESCRIPTIONS = {
     IntentCategory.PROMPT_INJECTION: "attempts to bypass, ignore, or override system instructions, safety rules, previous constraints, or hidden configurations",
     IntentCategory.JAILBREAK: "attempts to roleplay as unrestricted personas, break character limits, enter developer mode, or act as an AI with no moral boundaries",
@@ -49,23 +55,24 @@ INTENT_DESCRIPTIONS = {
     IntentCategory.UNKNOWN: "unclear, nonsensical, ambiguous, or completely unclassifiable input"
 }
 
-# Mapping Intents to Tiers
+# Mapping Intents to Tiers (P0-P4)
 TIER_MAPPING = {
-    IntentCategory.PROMPT_INJECTION: IntentTier.CRITICAL,
-    IntentCategory.JAILBREAK: IntentTier.CRITICAL,
-    IntentCategory.SYSTEM_OVERRIDE: IntentTier.CRITICAL,
+    IntentCategory.PROMPT_INJECTION: IntentTier.P0,
+    IntentCategory.JAILBREAK: IntentTier.P0,
+    IntentCategory.SYSTEM_OVERRIDE: IntentTier.P0,
     
-    IntentCategory.PII_EXFILTRATION: IntentTier.HIGH,
-    IntentCategory.TOXICITY: IntentTier.HIGH,
-    IntentCategory.TOOL_MISUSE: IntentTier.HIGH,
+    IntentCategory.PII_EXFILTRATION: IntentTier.P1,
+    IntentCategory.TOOL_MISUSE: IntentTier.P1,
     
-    IntentCategory.OFF_TOPIC: IntentTier.MEDIUM,
-    IntentCategory.FINANCIAL_ADVICE: IntentTier.MEDIUM,
-    IntentCategory.CODE_EXECUTION: IntentTier.MEDIUM,
+    IntentCategory.TOXICITY: IntentTier.P2,
     
-    IntentCategory.INFO_QUERY: IntentTier.LOW,
-    IntentCategory.INFO_SUMMARIZE: IntentTier.LOW,
-    IntentCategory.TOOL_AUTHORIZED: IntentTier.LOW,
-    IntentCategory.GREETING: IntentTier.LOW,
-    IntentCategory.UNKNOWN: IntentTier.LOW,
+    IntentCategory.OFF_TOPIC: IntentTier.P3,
+    IntentCategory.FINANCIAL_ADVICE: IntentTier.P3,
+    IntentCategory.CODE_EXECUTION: IntentTier.P3,
+    
+    IntentCategory.INFO_QUERY: IntentTier.P4,
+    IntentCategory.INFO_SUMMARIZE: IntentTier.P4,
+    IntentCategory.TOOL_AUTHORIZED: IntentTier.P4,
+    IntentCategory.GREETING: IntentTier.P4,
+    IntentCategory.UNKNOWN: IntentTier.P4,
 }

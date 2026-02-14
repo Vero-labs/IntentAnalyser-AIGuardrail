@@ -1,14 +1,10 @@
 """
-Tri-Axis Schemas — Flat output contract.
-
-The analyzer emits structured facts. No nesting. No noise.
-Trace/observability is available via ?debug=true query param.
+High-Assurance Schemas — Hierarchical output contract.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
-from app.core.axes import Action, Domain, RiskSignal
-
+from typing import List, Optional, Dict, Any
+from app.core.taxonomy import IntentCategory, IntentTier
 
 class Message(BaseModel):
     role: str
@@ -22,30 +18,38 @@ class IntentRequest(BaseModel):
     session_id: Optional[str] = None
 
 
+class AnalysisBreakdown(BaseModel):
+    """Component-level details for debugging and auditing."""
+    regex_match: bool
+    semantic_score: float
+    zeroshot_score: float
+    detected_tier: IntentTier
+
+
 class IntentResponse(BaseModel):
-    """Flat, structured facts from the tri-axis pipeline."""
-    action: Action
-    action_confidence: float = Field(..., ge=0.0, le=1.0)
-    domain: Domain
-    domain_confidence: float = Field(..., ge=0.0, le=1.0)
-    risk_signals: List[RiskSignal] = [RiskSignal.NONE]
-    risk_score: float = Field(0.0, ge=0.0, le=1.0)
-    ambiguity: bool = False
+    """
+    Structured facts from the High-Assurance pipeline.
+    
+    Fields:
+    - intent: The primary detected intent category.
+    - confidence: How sure the system matches the intent (0.0-1.0).
+    - risk_score: R_total calculated by the Risk Engine.
+    - tier: The Priority Tier (P0-P4) this intent belongs to.
+    - breakdown: Internal component scores.
+    """
+    intent: IntentCategory
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    risk_score: float = Field(..., ge=0.0, le=1.0)
+    tier: IntentTier
+    breakdown: AnalysisBreakdown
+    decision: str = "allow"
+    reason: Optional[str] = None
     processing_time_ms: Optional[float] = None
-
-
-class DetectorTrace(BaseModel):
-    """Full observability trace. Only included when ?debug=true."""
-    regex_triggered: bool = False
-    regex_signals: List[str] = []
-    risk_semantic_scores: Dict[str, float] = {}
-    risk_detection_path: str = ""
-    action_all_scores: Dict[str, float] = {}
-    domain_all_scores: Dict[str, float] = {}
-    dominant_layer: str = ""
-    pipeline_short_circuited: bool = False
+    
+    # Optional debug info
+    trace: Optional[Dict[str, Any]] = None
 
 
 class IntentResponseDebug(IntentResponse):
-    """Extended response with trace — only via ?debug=true."""
-    trace: Optional[DetectorTrace] = None
+    """Same as IntentResponse, trace is already optional there."""
+    pass

@@ -53,10 +53,19 @@ class RegexDetector(BaseDetector):
                 r"halt system",
                 r"chmod",
                 r"sudo rm",
+                r"rm -rf",
+                r"rm -f",
+                r"rm -r",
                 r"transfer admin",
                 r"disable antivirus",
                 r"kill -9",
-                r"disable the firewall"
+                r"killall",
+                r"pkill",
+                r"wget ",
+                r"curl ",
+                r"disable the firewall",
+                r"format d:",
+                r"delete all files"
             ],
             IntentCategory.PII_EXFILTRATION: [
                 r"read my passwords",
@@ -124,15 +133,30 @@ class RegexDetector(BaseDetector):
                 
         return " ".join(decoded_fragments)
 
+    def _calculate_entropy(self, text: str) -> float:
+        import math
+        if not text:
+            return 0.0
+        prob = [float(text.count(c)) / len(text) for c in dict.fromkeys(list(text))]
+        entropy = -sum([p * math.log(p) / math.log(2.0) for p in prob])
+        return entropy
+
     def detect(self, text: str) -> Dict[str, Any]:
         """
         Check for regex matches on:
         1. Raw text
         2. Normalized text (stripped of spaces/symbols)
         3. Base64 decoded payloads
+        4. Entropy check (Obfuscation detection)
         """
         import logging
         logger = logging.getLogger(__name__)
+
+        # 0. Entropy Check (Layer 1 Defense)
+        entropy = self._calculate_entropy(text)
+        if entropy > 4.5 and len(text) > 15: # Ignore short strings
+            logger.warning(f"High Entropy Detected: {entropy:.2f}")
+            return self._build_result(IntentCategory.PROMPT_INJECTION, 1.0, f"high_entropy_obfuscation:{entropy:.2f}")
 
         # Prepare variations
         raw_text = text

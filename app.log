@@ -1,0 +1,37 @@
+/Users/arsalan/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+⚠️ Redis unavailable (Connection Refused). Falling back to In-Memory Cache.
+⚠️ Redis unavailable (Connection Refused). Falling back to In-Memory Cache.
+INFO:     Started server process [35351]
+{"timestamp": "2026-02-14 02:11:07,913", "level": "INFO", "message": "Started server process [35351]", "logger": "uvicorn.error", "module": "server", "line": 77}
+INFO:     Waiting for application startup.
+{"timestamp": "2026-02-14 02:11:07,913", "level": "INFO", "message": "Waiting for application startup.", "logger": "uvicorn.error", "module": "on", "line": 46}
+{"timestamp": "2026-02-14 02:11:07,913", "level": "INFO", "message": "Initializing Classifiers...", "logger": "app.api.routes", "module": "routes", "line": 40}
+{"timestamp": "2026-02-14 02:11:07,914", "level": "INFO", "message": "Compiled 21 patterns for code.exploit", "logger": "app.services.detectors.regex", "module": "regex", "line": 79}
+{"timestamp": "2026-02-14 02:11:07,914", "level": "INFO", "message": "Compiled 9 patterns for security.jailbreak", "logger": "app.services.detectors.regex", "module": "regex", "line": 79}
+{"timestamp": "2026-02-14 02:11:07,914", "level": "INFO", "message": "Compiled 10 patterns for sys.control", "logger": "app.services.detectors.regex", "module": "regex", "line": 79}
+{"timestamp": "2026-02-14 02:11:07,915", "level": "INFO", "message": "Compiled 8 patterns for info.query.pii", "logger": "app.services.detectors.regex", "module": "regex", "line": 79}
+{"timestamp": "2026-02-14 02:11:07,938", "level": "INFO", "message": "Loading Semantic Model (all-MiniLM-L6-v2) on mps...", "logger": "app.services.detectors.semantic", "module": "semantic", "line": 23}
+{"timestamp": "2026-02-14 02:11:07,940", "level": "INFO", "message": "Load pretrained SentenceTransformer: all-MiniLM-L6-v2", "logger": "sentence_transformers.SentenceTransformer", "module": "SentenceTransformer", "line": 227}
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.90it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  5.90it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.80it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 30.91it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.13it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 34.93it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 97.47it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 31.18it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 38.02it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 50.91it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 48.19it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 33.32it/s]
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 43.47it/s]
+{"timestamp": "2026-02-14 02:11:14,324", "level": "INFO", "message": "Loading ZeroShot Model (valhalla/distilbart-mnli-12-3) on mps...", "logger": "app.services.detectors.zeroshot", "module": "zeroshot", "line": 40}
+Device set to use mps
+{"timestamp": "2026-02-14 02:11:18,053", "level": "INFO", "message": "ZeroShot Model Loaded Successfully.", "logger": "app.services.detectors.zeroshot", "module": "zeroshot", "line": 47}
+{"timestamp": "2026-02-14 02:11:18,058", "level": "INFO", "message": "Classifiers Initialized.", "logger": "app.api.routes", "module": "routes", "line": 48}
+INFO:     Application startup complete.
+{"timestamp": "2026-02-14 02:11:18,058", "level": "INFO", "message": "Application startup complete.", "logger": "uvicorn.error", "module": "on", "line": 60}
+INFO:     Uvicorn running on http://0.0.0.0:8003 (Press CTRL+C to quit)
+{"timestamp": "2026-02-14 02:11:18,068", "level": "INFO", "message": "Uvicorn running on http://0.0.0.0:8003 (Press CTRL+C to quit)", "logger": "uvicorn.error", "module": "server", "line": 219}
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

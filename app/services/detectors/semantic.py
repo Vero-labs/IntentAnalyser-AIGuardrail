@@ -128,19 +128,39 @@ class SemanticDetector(BaseDetector):
                 best_intent = intent
 
         # Log top 3 for debugging
-        sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-        logger.info(f"Semantic Top 3: {', '.join(f'{k}={v:.3f}' for k,v in sorted_scores)}")
+        sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
+        top_3 = sorted_scores[:3]
+        logger.info(f"Semantic Top 3: {', '.join(f'{k}={v:.3f}' for k,v in top_3)}")
+
+        # Uncertainty Calculation (Margin Sampling)
+        # Low margin = High uncertainty (model is confused between classes)
+        if len(sorted_scores) >= 2:
+            margin = sorted_scores[0][1] - sorted_scores[1][1]
+            uncertainty = 1.0 - margin
+        else:
+            uncertainty = 0.0
 
         # Thresholds can be tuned per intent
         threshold = 0.5
         
-        if max_score > threshold: 
-            return {
-                "detected": True,
-                "score": max_score,
-                "intent": best_intent,
-                "metadata": {"similarity": max_score, "top_scores": dict(sorted_scores)}
+        result_payload = {
+            "score": max_score,
+            "intent": best_intent,
+            "uncertainty": uncertainty,
+            "metadata": {
+                "similarity": max_score, 
+                "top_scores": dict(top_3),
+                "uncertainty_score": uncertainty
             }
+        }
+
+        if max_score > threshold: 
+            result_payload["detected"] = True
+            return result_payload
+            
+        result_payload["detected"] = False
+        result_payload["intent"] = None # Fallback
+        return result_payload
             
         return {
             "detected": False,
