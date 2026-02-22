@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.env import load_env_file
 from app.core.logging import setup_logging
 import logging
+import os
 
 # Load local development env vars before app startup.
 load_env_file(".env")
@@ -29,7 +30,9 @@ app.add_middleware(
 origins = [
     "http://localhost",
     "http://localhost:3000",
+    "http://localhost:8000",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
 ]
 
 app.add_middleware(
@@ -54,4 +57,6 @@ app.include_router(api_router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8002"))
+    uvicorn.run(app, host=host, port=port)

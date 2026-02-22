@@ -6,7 +6,7 @@ const GUARDRAIL_URL = 'http://localhost:8000/intent';
 async function checkInput(userText, role = 'general') {
   const response = await axios.post(GUARDRAIL_URL, {
     text: userText,
-    role: role
+    user_role: role
   });
   return response.data;
 }
@@ -16,8 +16,8 @@ async function checkInput(userText, role = 'general') {
   const result = await checkInput('Tell me about Node.js');
   
   if (result.decision === 'block') {
-    console.log(`🔴 Blocked: ${result.reason}`);
+    console.log(`[BLOCKED] Blocked: ${result.reason}`);
   } else {
-    console.log(`🟢 Safe: ${result.intent}`);
+    console.log(`[ALLOWED] Safe: ${result.intent}`);
   }
 })();

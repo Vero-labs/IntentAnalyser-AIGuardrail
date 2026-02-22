@@ -6,7 +6,7 @@ Pipeline:
   2. Fast-safe bypass for trivial benign prompts
   3. Zero-shot detector (only if deterministic routing is inconclusive)
   4. Tier mapping
-  5. Cedar policy enforcement
+  5. Classic YAML policy enforcement (main.yaml)
 
 Output is deterministic: intent, confidence, tier, decision.
 Trace available via ?debug=true.
@@ -19,7 +19,12 @@ from app.core.cache import CacheService
 from app.core.rate_limit import RateLimiter
 from app.services.priority_engine import PriorityEngine
 from app.services.detectors.regex import RegexDetector
-from app.services.policy_engine import PolicyEngine
+from app.services.classic_policy import (
+    ClassicPolicyError,
+    POLICY_PATH,
+    evaluate_classic_policy,
+    load_classic_policy,
+)
 from app.core.taxonomy import IntentCategory, IntentTier
 from typing import Dict, Any
 import logging
@@ -46,7 +51,6 @@ async def startup_event():
 
 # Engines
 priority_engine = PriorityEngine()
-policy_engine = PolicyEngine()
 
 OVERRIDE_INTENTS = {
     IntentCategory.PROMPT_INJECTION,
@@ -478,22 +482,6 @@ def _validate_signal_contract(signal_contract: Dict[str, Any]) -> None:
         raise ValueError("'intent' must be a non-empty string")
 
 
-def _build_policy_context(signal_contract: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Cedar context must avoid floating-point values for compatibility with cedarpy request parsing.
-    Keep policy-visible values deterministic booleans.
-    """
-    return {
-        "override_detected": signal_contract["override_detected"],
-        "pii_detected": signal_contract["pii_detected"],
-        "toxicity_detected": signal_contract["toxicity_detected"],
-        "toxicity_enforce_block": signal_contract["toxicity_enforce_block"],
-        "financial_advice_detected": signal_contract["financial_advice_detected"],
-        "low_confidence": signal_contract["low_confidence"],
-        "intent": signal_contract["intent"],
-    }
-
-
 def _derive_final_tier(signal_contract: Dict[str, Any], user_role: str) -> tuple[IntentTier, int, bool]:
     tier_rank = 4  # P4 default
 
@@ -698,32 +686,27 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
         ),
     )
 
-    # 9. Policy Enforcement (Cedar)
-    # Map context
-    # Use request role if provided, otherwise default to "general"
-    principal = f"Role::\"{role}\""
-    
-    action_str = "Action::\"query\"" # Default
-    if "summarize" in primary_intent.value:
-        action_str = "Action::\"summarize\""
-    elif "generate" in primary_intent.value:
-        action_str = "Action::\"generate\""
-    elif "greeting" in primary_intent.value:
-        action_str = "Action::\"greet\""
-    
-    resource = "App::\"IntentAnalyzer\""
-    context = _build_policy_context(signal_contract)
-
+    # 9. Classic policy enforcement from app/policies/main.yaml
     stage_start = time.perf_counter()
-    policy_result = policy_engine.evaluate(principal, action_str, resource, context)
+    try:
+        classic_policy = load_classic_policy(POLICY_PATH)
+    except ClassicPolicyError as exc:
+        raise HTTPException(status_code=500, detail=f"Invalid policy file: {exc}") from exc
+    policy_eval = evaluate_classic_policy(
+        classic_policy,
+        role=role,
+        detected_intent=primary_intent.value,
+        confidence=response_data.confidence,
+        text=input_text,
+    )
     stage_timings["policy_eval_ms"] = round((time.perf_counter() - stage_start) * 1000, 3)
 
-    response_data.decision = policy_result.decision
-    response_data.reason = policy_result.reason
+    response_data.decision = policy_eval["decision"]
+    response_data.reason = policy_eval["reason"]
 
-    if signal_contract["toxicity_detected"] and policy_result.decision == "allow":
+    if signal_contract["toxicity_detected"] and response_data.decision == "allow":
         if TOXICITY_POLICY_MODE == "warn":
-            response_data.reason = f"{policy_result.reason} | Toxicity detected (warn mode)."
+            response_data.reason = f"{response_data.reason} | Toxicity detected (warn mode)."
         elif TOXICITY_POLICY_MODE == "log":
             logger.warning(
                 "Toxicity detected in log mode; allowing request. intent=%s text_preview=%s",
@@ -775,9 +758,10 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
             },
             "r_total": response_data.risk_score,
             "policy": {
-                "decision": policy_result.decision,
-                "diagnostics": policy_result.diagnostics,
-                "context": context
+                "decision": response_data.decision,
+                "reason": response_data.reason,
+                "policy_intent": policy_eval.get("policy_intent"),
+                "policy_path": str(POLICY_PATH),
             }
         }
 

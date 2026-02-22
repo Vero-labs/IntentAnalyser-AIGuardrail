@@ -1,12 +1,30 @@
-version: 1
-template: strict
-blocked_tiers:
-  - P0_Critical
-  - P1_High
-  - P2_Medium
-  - P3_Low
-role_overrides:
-  {}  # No role overrides (tier enforcement only)
-low_confidence:
-  threshold: 0.5
-  clamp_tier: P2_Medium
+agent:
+  name: coding-agent
+
+allowed_intents:
+  - coding.question
+  - code.review
+  - debugging.help
+
+
+blocked_intents:
+  - financial.advice
+  - political.discussion
+  - medical.advice
+
+confidence:
+  threshold: 0.6
+  fallback: block
+
+roles:
+  admin:
+    allow: ALL
+  user:
+    allow:
+      - coding.question
+      - code.review
+      - debugging.help
+    block:
+      - financial.advice
+      - political.discussion
+      - medical.advice  

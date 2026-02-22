@@ -7,7 +7,7 @@ def check_input(user_text: str, role: str = "general") -> dict:
     """Check user input against guardrail"""
     response = requests.post(
         GUARDRAIL_URL,
-        json={"text": user_text, "role": role},
+        json={"text": user_text, "user_role": role},
         timeout=5
     )
     return response.json()
@@ -17,6 +17,6 @@ if __name__ == "__main__":
     result = check_input("Tell me about Python")
     
     if result["decision"] == "block":
-        print(f"🔴 Blocked: {result['reason']}")
+        print(f"[BLOCKED] Blocked: {result['reason']}")
     else:
-        print(f"🟢 Safe: {result['intent']}")
+        print(f"[ALLOWED] Safe: {result['intent']}")
