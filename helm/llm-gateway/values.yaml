@@ -1,0 +1,79 @@
+replicaCount: 1
+
+image:
+  repository: intent-llm-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: llm-gateway.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+envFromSecret: ""
+
+extraEnv:
+  - name: HF_TIMEOUT_SECONDS
+    value: "20"
+  - name: HF_MAX_RETRIES
+    value: "2"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+runtimeConfig: |
+  provider:
+    name: openai
+    model: gpt-4o-mini
+    base_url: https://api.openai.com
+    api_key_env: OPENAI_API_KEY
+  server:
+    host: 0.0.0.0
+    port: 8000
+  policy_mode: strict
+  request_timeout_seconds: 30.0
+  logging:
+    store_prompts: false
+
+policy: |
+  agent:
+    name: llm-gateway
+  allowed_intents:
+    - info.query
+    - coding.question
+    - code.review
+  blocked_intents:
+    - financial.advice
+    - political.discussion
+    - medical.advice
+  confidence:
+    threshold: 0.6
+    fallback: block
+  roles:
+    admin:
+      allow: ALL
+    general:
+      allow:
+        - info.query
+        - coding.question
+        - code.review

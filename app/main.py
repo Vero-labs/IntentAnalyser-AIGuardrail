@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.env import load_env_file
 from app.core.logging import setup_logging
+from app.services.runtime_config import CONFIG_PATH, RuntimeConfigError, load_runtime_config
 import logging
 import os
 
 # Load local development env vars before app startup.
-load_env_file(".env")
+load_env_file(os.getenv("GUARDRAIL_ENV_FILE", ".env"))
 
 from app.api.routes import router as api_router
 
@@ -57,6 +58,15 @@ app.include_router(api_router)
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8002"))
+    config_host = "0.0.0.0"
+    config_port = 8000
+    try:
+        runtime_config = load_runtime_config(CONFIG_PATH)
+        config_host = runtime_config.server_host
+        config_port = runtime_config.server_port
+    except RuntimeConfigError:
+        pass
+
+    host = os.getenv("HOST", config_host)
+    port = int(os.getenv("PORT", str(config_port)))
     uvicorn.run(app, host=host, port=port)

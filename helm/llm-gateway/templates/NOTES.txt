@@ -1,0 +1,12 @@
+1. Get the service endpoint:
+{{- if eq .Values.service.type "LoadBalancer" }}
+  kubectl get svc -n {{ .Release.Namespace }} {{ include "llm-gateway.fullname" . }}
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "llm-gateway.fullname" . }} 8000:{{ .Values.service.port }}
+{{- end }}
+
+2. Health check:
+  curl http://127.0.0.1:8000/health
+
+3. OpenAI-compatible proxy endpoint:
+  http://127.0.0.1:8000/proxy/openai/v1/chat/completions

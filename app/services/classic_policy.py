@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 import re
+import os
 
-POLICY_PATH = Path("app/policies/main.yaml")
+DEFAULT_POLICY_PATH = Path("app/policies/main.yaml")
+POLICY_PATH = Path(
+    os.getenv("GUARDRAIL_POLICY_PATH", str(DEFAULT_POLICY_PATH))
+).expanduser()
 
 
 class ClassicPolicyError(ValueError):

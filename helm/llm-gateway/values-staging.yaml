@@ -1,0 +1,17 @@
+replicaCount: 2
+
+envFromSecret: llm-gateway-secrets
+
+runtimeConfig: |
+  provider:
+    name: openai
+    model: gpt-4o-mini
+    base_url: https://api.openai.com
+    api_key_env: OPENAI_API_KEY
+  server:
+    host: 0.0.0.0
+    port: 8000
+  policy_mode: balanced
+  request_timeout_seconds: 45.0
+  logging:
+    store_prompts: false

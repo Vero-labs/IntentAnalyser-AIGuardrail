@@ -12,7 +12,8 @@ Output is deterministic: intent, confidence, tier, decision.
 Trace available via ?debug=true.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from fastapi.responses import JSONResponse, Response
 from app.schemas.intent import AnalysisBreakdown, IntentRequest, IntentResponse
 from app.services.detectors.zeroshot import ZeroShotDetector
 from app.core.cache import CacheService
@@ -25,12 +26,20 @@ from app.services.classic_policy import (
     evaluate_classic_policy,
     load_classic_policy,
 )
+from app.services.runtime_config import (
+    CONFIG_PATH,
+    RuntimeConfigError,
+    default_runtime_config,
+    load_runtime_config,
+    read_provider_api_key,
+)
 from app.core.taxonomy import IntentCategory, IntentTier
 from typing import Dict, Any
 import logging
 import os
 import time
 import re
+import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -501,6 +510,66 @@ def _derive_final_tier(signal_contract: Dict[str, Any], user_role: str) -> tuple
     return RANK_TO_TIER[tier_rank], tier_rank, low_confidence_clamp
 
 
+def _extract_text_from_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+
+    chunks: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            chunks.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") in {"text", "input_text"}:
+            text = item.get("text")
+            if isinstance(text, str):
+                chunks.append(text)
+    return "\n".join(chunks).strip()
+
+
+def _extract_proxy_prompt(payload: Dict[str, Any]) -> str:
+    messages = payload.get("messages")
+    if isinstance(messages, list):
+        rendered: list[str] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            role = str(message.get("role", "user"))
+            content = _extract_text_from_message_content(message.get("content"))
+            if content:
+                rendered.append(f"{role}: {content}")
+        if rendered:
+            return "\n".join(rendered)
+
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        return prompt
+
+    input_text = payload.get("input")
+    if isinstance(input_text, str) and input_text.strip():
+        return input_text
+
+    return ""
+
+
+def _extract_proxy_role(payload: Dict[str, Any]) -> str:
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        role = metadata.get("role")
+        if isinstance(role, str) and role.strip():
+            return role.strip()
+
+    for key in ("user_role", "role"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return "general"
+
+
 @router.post("/intent", dependencies=[Depends(rate_limiter)])
 async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
     total_start = time.perf_counter()
@@ -770,6 +839,97 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
         cache_service.set(cache_key, resp_dict)
     
     return resp_dict
+
+
+@router.post("/proxy/openai/v1/chat/completions", dependencies=[Depends(rate_limiter)])
+async def proxy_openai_chat_completions(request: Request):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
+
+    prompt_text = _extract_proxy_prompt(payload)
+    if not prompt_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to extract prompt text from request. Provide 'messages', 'prompt', or 'input'.",
+        )
+
+    user_role = _extract_proxy_role(payload)
+    policy_result = await analyze_intent(
+        IntentRequest(text=prompt_text, user_role=user_role),
+        debug=False,
+    )
+    if policy_result.get("decision") == "block":
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "type": "policy_block",
+                    "message": "Request blocked by guardrail policy",
+                    "reason": policy_result.get("reason", "Policy blocked request."),
+                    "intent": policy_result.get("intent"),
+                    "tier": policy_result.get("tier"),
+                    "confidence": policy_result.get("confidence"),
+                }
+            },
+        )
+
+    try:
+        runtime_config = load_runtime_config(CONFIG_PATH)
+    except RuntimeConfigError as exc:
+        logger.warning("Runtime config unavailable (%s). Falling back to defaults.", exc)
+        runtime_config = default_runtime_config()
+    try:
+        provider_api_key = read_provider_api_key(runtime_config)
+    except RuntimeConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if payload.get("stream") is True:
+        raise HTTPException(
+            status_code=501,
+            detail="Streaming proxy mode is not enabled yet. Send stream=false.",
+        )
+
+    if runtime_config.provider_name == "anthropic":
+        raise HTTPException(
+            status_code=400,
+            detail="Current proxy endpoint is OpenAI-compatible. Configure provider.name=openai|azure|custom.",
+        )
+
+    upstream_url = f"{runtime_config.provider_base_url}/v1/chat/completions"
+    upstream_payload = dict(payload)
+    if not upstream_payload.get("model"):
+        upstream_payload["model"] = runtime_config.provider_model
+
+    forward_headers = {
+        "Authorization": f"Bearer {provider_api_key}",
+        "Content-Type": "application/json",
+    }
+    for passthrough_header in ("OpenAI-Organization", "OpenAI-Project"):
+        header_value = request.headers.get(passthrough_header)
+        if header_value:
+            forward_headers[passthrough_header] = header_value
+
+    try:
+        async with httpx.AsyncClient(timeout=runtime_config.request_timeout_seconds) as client:
+            upstream_response = await client.post(
+                upstream_url,
+                json=upstream_payload,
+                headers=forward_headers,
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Upstream provider request failed: {exc}") from exc
+
+    media_type = upstream_response.headers.get("content-type", "application/json")
+    return Response(
+        content=upstream_response.content,
+        status_code=upstream_response.status_code,
+        media_type=media_type,
+    )
 
 
 @router.get("/health")

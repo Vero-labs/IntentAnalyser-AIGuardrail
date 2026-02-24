@@ -1,14 +1,83 @@
 
-# Intent Analyzer Sidecar 🛡️
+# Intent Analyzer Gateway 🛡️
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.0%2B-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Performance](https://img.shields.io/badge/latency-sub--1ms-green.svg)](docs/architecture_demo.md)
 
-The **Intent Analyzer** is a high-performance, AI-driven guardrail service designed to detect and classify user intents in real-time. It acts as a security sidecar for LLM applications, preventing prompt injection, jailbreaks, PII exfiltration, and other malicious activities before they reach your core model.
+The **Intent Analyzer Gateway** is a high-performance, AI-driven guardrail service designed to detect and classify user intents in real-time. It acts as a security sidecar for LLM applications, preventing prompt injection, jailbreaks, PII exfiltration, and other malicious activities before they reach your core model.
 
 This version uses **Hugging Face hosted inference APIs** for semantic embeddings and zero-shot classification, so deployment does not require downloading model weights locally.
+
+## NGINX For LLMs
+
+Use this project as an LLM traffic gateway:
+- OpenAI-compatible proxy endpoint: `/proxy/openai/v1/chat/completions`
+- Guardrail policy enforcement before upstream model calls
+- Portable deployment targets: **binary**, **Docker image**, **Helm chart**
+
+## One-Liner Install (curl)
+
+Interactive (prompts for keys):
+```bash
+curl -fsSL https://raw.githubusercontent.com/<ORG>/<REPO>/main/scripts/quickstart.sh | \
+  bash -s -- --repo-url https://github.com/<ORG>/<REPO>.git
+```
+
+Non-interactive:
+```bash
+curl -fsSL https://raw.githubusercontent.com/<ORG>/<REPO>/main/scripts/quickstart.sh | \
+  bash -s -- \
+    --repo-url https://github.com/<ORG>/<REPO>.git \
+    --openai-key "$OPENAI_API_KEY" \
+    --hf-token "$HUGGINGFACE_API_TOKEN"
+```
+
+## Deployment Targets
+
+1. Binary (`PyInstaller`):
+   ```bash
+   python3 -m pip install -r requirements.txt -r requirements-build.txt
+   ./scripts/build-binary.sh
+   ./dist/llm-gateway run
+   ```
+2. Docker image:
+   ```bash
+   docker build -t intent-llm-gateway:latest .
+   docker compose --env-file configs/local/.env.gateway -f docker-compose.gateway.yml up --build
+   ```
+3. Helm chart:
+   ```bash
+   helm upgrade --install llm-gateway ./helm/llm-gateway \
+     --set image.repository=intent-llm-gateway \
+     --set image.tag=latest \
+     --set envFromSecret=llm-gateway-secrets
+   ```
+   Environment value files:
+   - `helm/llm-gateway/values-local.yaml`
+   - `helm/llm-gateway/values-staging.yaml`
+   - `helm/llm-gateway/values-prod.yaml`
+
+## Local Config Packs
+
+Config files are saved in this repo under `configs/` so you can move between environments and platforms:
+- `configs/local/`
+- `configs/staging/`
+- `configs/prod/`
+- shared policy: `configs/policies/main.yaml`
+
+Runtime path overrides:
+- `GUARDRAIL_CONFIG_PATH` (runtime config YAML)
+- `GUARDRAIL_POLICY_PATH` (policy YAML)
+- `GUARDRAIL_ENV_FILE` (`.env` file path)
+
+Quick environment switch:
+```bash
+./scripts/run-with-config.sh local
+./scripts/run-with-config.sh staging
+./scripts/run-with-config.sh prod
+```
 
 ---
 
@@ -69,14 +138,17 @@ graph TD
 - Docker (Recommended)
 - OR Python 3.9+ (with `pip`)
 
-### 🐳 Docker / Render Deployment
+### 🐳 Docker Deployment
 
 The service is production-ready with a tuned `Dockerfile`.
 
 **Environment Variables:**
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `PORT` | Service port | `8002` |
+| `PORT` | Service port | `8000` |
+| `GUARDRAIL_CONFIG_PATH` | Runtime config file path | `guardrail.config.yaml` |
+| `GUARDRAIL_POLICY_PATH` | Policy file path | `app/policies/main.yaml` |
+| `GUARDRAIL_ENV_FILE` | Optional env file path | `.env` |
 | `HUGGINGFACE_API_TOKEN` | HF token for hosted inference (recommended for higher limits) | _unset_ |
 | `HF_ZEROSHOT_MODEL` | Hosted zero-shot model ID | `facebook/bart-large-mnli` |
 | `HF_EMBEDDING_MODEL` | Hosted embedding model ID | `sentence-transformers/all-MiniLM-L6-v2` |
@@ -86,9 +158,10 @@ The service is production-ready with a tuned `Dockerfile`.
 
 Token note: make sure the token includes **Inference Providers** permission in Hugging Face settings.
 
-**Run Locally:**
+**Build and Run with local mounted config pack:**
 ```bash
-docker build -t intent-analyzer .
+docker build -t intent-llm-gateway:latest .
+docker compose --env-file configs/local/.env.gateway -f docker-compose.gateway.yml up --build
 ```
 
 **Deploy to Render:**
@@ -104,7 +177,7 @@ Push this repo to GitHub and link it to a Render Web Service. The included `rend
     ```bash
     python -m app.main
     ```
-    *Server will start on `http://localhost:8002`*
+    *Server will start on `http://localhost:8000`*
 
 3.  **Run Tests**:
     ```bash
@@ -121,7 +194,7 @@ We provide a built-in async client for seamless integration.
 from app.client.client import IntentClient
 
 async def check_safety():
-    client = IntentClient(base_url="http://localhost:8002")
+    client = IntentClient(base_url="http://localhost:8000")
     
     # 1. Analyze simple text
     response = await client.analyze_text("delete all files on the server")

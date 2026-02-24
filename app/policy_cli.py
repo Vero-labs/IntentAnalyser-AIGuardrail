@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -12,6 +13,15 @@ from app.services.classic_policy import (
     evaluate_classic_policy,
     load_classic_policy,
 )
+from app.services.runtime_config import (
+    CONFIG_PATH,
+    RuntimeConfig,
+    RuntimeConfigError,
+    default_runtime_config,
+    load_runtime_config,
+    save_runtime_config,
+)
+from app.wizard import InitWizardResult, run_init_wizard
 
 DEFAULT_POLICY_CONTENT = """agent:
   name: recruiter-assistant
@@ -54,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         print(f"[ERR] {exc}")
         return 1
+    except RuntimeConfigError as exc:
+        print(f"[ERR] {exc}")
+        return 1
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -63,13 +76,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="Create a starter app/policies/main.yaml policy file.")
-    init_parser.add_argument("--force", action="store_true", help="Overwrite an existing policy file.")
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Interactive setup wizard (policy + runtime config + .env).",
+    )
+    init_parser.add_argument("--force", action="store_true", help="Overwrite existing policy/config/.env files.")
     init_parser.set_defaults(func=cmd_init)
 
     run_parser = subparsers.add_parser("run", help="Start guardrail proxy server.")
-    run_parser.add_argument("--port", type=int, default=8000, help="Server port")
-    run_parser.add_argument("--host", default="localhost", help="Server host")
+    run_parser.add_argument("--port", type=int, default=None, help="Server port (overrides config file)")
+    run_parser.add_argument("--host", default=None, help="Server host (overrides config file)")
     run_parser.set_defaults(func=cmd_run)
 
     test_parser = subparsers.add_parser("test", help="Interactive local policy simulation.")
@@ -96,40 +112,77 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def cmd_init(args: argparse.Namespace) -> int:
     policy_path = POLICY_PATH
+    config_path = CONFIG_PATH
+    env_path = Path(".env")
     policy_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if policy_path.exists() and not args.force:
-        print(f"[ERR] Policy already exists at {policy_path}. Use --force to overwrite.")
+    existing = [str(path) for path in (policy_path, config_path, env_path) if path.exists()]
+    if existing and not args.force:
+        print("[ERR] Refusing to overwrite existing files:")
+        for path in existing:
+            print(f"  - {path}")
+        print("Use --force to overwrite.")
         return 1
 
-    policy_path.write_text(DEFAULT_POLICY_CONTENT, encoding="utf-8")
-    print(f"[OK] Policy initialized: {policy_path}")
+    init_result = _build_init_result()
+    policy_path.write_text(init_result.policy_yaml, encoding="utf-8")
+    save_runtime_config(init_result.runtime_config, config_path)
+    _write_env_file(env_path, init_result.env_vars)
+
+    # The interactive wizard (Step 5) shows its own completion panel.
+    # Only print plain output for non-interactive (piped) runs.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("[OK] Guardrail initialized")
+        print(f"  - Policy: {policy_path}")
+        print(f"  - Config: {config_path}")
+        print(f"  - Env:    {env_path}")
     return 0
 
 
 def cmd_policy_validate(args: argparse.Namespace) -> int:
     _ = args
     _load_or_exit()
+    runtime_config = _load_runtime_or_exit()
     print(f"[OK] Policy is valid: {POLICY_PATH}")
+    if CONFIG_PATH.exists():
+        print(f"[OK] Runtime config is valid: {CONFIG_PATH}")
+    else:
+        print("[WARN] Runtime config file not found; using built-in defaults.")
+        print(f"       Create {CONFIG_PATH} with './guardrail init --force' for production.")
+    print(f"[INFO] Active provider={runtime_config.provider_name} model={runtime_config.provider_model}")
     return 0
 
 
 def cmd_policy_show(args: argparse.Namespace) -> int:
     _ = args
     policy = _load_or_exit()
+    runtime_config = _load_runtime_or_exit()
     _print_policy_summary(policy)
+    print("Runtime config:")
+    print(f"  provider={runtime_config.provider_name}")
+    print(f"  model={runtime_config.provider_model}")
+    print(f"  provider_base_url={runtime_config.provider_base_url}")
+    print(f"  api_key_env={runtime_config.provider_api_key_env}")
+    print(f"  bind={runtime_config.server_host}:{runtime_config.server_port}")
     return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     policy = _load_or_exit()
+    runtime_config = _load_runtime_or_exit()
+    host = args.host or runtime_config.server_host
+    port = int(args.port or runtime_config.server_port)
+    endpoint_host = "localhost" if host in {"0.0.0.0", "::"} else host
 
     print("\n" + "=" * 60)
     print("[GUARDRAIL] Classic Policy Proxy")
     print("=" * 60)
-    print(f"\n[ENDPOINT] Analyze endpoint: http://{args.host}:{args.port}/intent")
-    print(f"[HEALTH] Health check:      http://{args.host}:{args.port}/health")
-    print(f"[DOCS] API docs:            http://{args.host}:{args.port}/docs")
+    print(f"\n[ENDPOINT] Analyze endpoint: http://{endpoint_host}:{port}/intent")
+    print(f"[PROXY] OpenAI proxy:       http://{endpoint_host}:{port}/proxy/openai/v1/chat/completions")
+    print(f"[HEALTH] Health check:      http://{endpoint_host}:{port}/health")
+    print(f"[DOCS] API docs:            http://{endpoint_host}:{port}/docs")
+    print(f"[PROVIDER] Upstream:        {runtime_config.provider_base_url}")
+    print(f"[MODEL] Default model:      {runtime_config.provider_model}")
     print(f"\n[POLICY] Agent: {policy.agent_name}")
     print(f"   Allowed intents: {len(policy.allowed_intents)}")
     print(f"   Blocked intents: {len(policy.blocked_intents)}")
@@ -138,8 +191,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     print("=" * 60 + "\n")
 
     env = os.environ.copy()
-    env["PORT"] = str(args.port)
-    env["HOST"] = str(args.host)
+    env["PORT"] = str(port)
+    env["HOST"] = str(host)
 
     try:
         subprocess.run([sys.executable, "-m", "app.main"], env=env, check=True)
@@ -197,6 +250,39 @@ def _load_or_exit() -> ClassicPolicy:
             f"Policy file not found: {POLICY_PATH}. Run './guardrail init' first."
         )
     return load_classic_policy(POLICY_PATH)
+
+
+def _load_runtime_or_exit() -> RuntimeConfig:
+    if not CONFIG_PATH.exists():
+        return default_runtime_config()
+    return load_runtime_config(CONFIG_PATH)
+
+
+def _build_init_result() -> InitWizardResult:
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        return run_init_wizard()
+
+    runtime_config = default_runtime_config()
+    return InitWizardResult(
+        policy_yaml=DEFAULT_POLICY_CONTENT,
+        runtime_config=runtime_config,
+        env_vars={
+            runtime_config.provider_api_key_env: "",
+            "HUGGINGFACE_API_TOKEN": "",
+        },
+    )
+
+
+def _write_env_file(path: Path, values: dict[str, str]) -> None:
+    lines = [
+        "# Guardrail environment variables",
+        "# Generated by `guardrail init`",
+        "",
+    ]
+    for key, value in values.items():
+        lines.append(f"{key}={value}")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _print_policy_summary(policy: ClassicPolicy) -> None:

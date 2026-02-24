@@ -1,0 +1,31 @@
+agent:
+  name: llm-gateway
+
+allowed_intents:
+  - info.query
+  - info.summarize
+  - coding.question
+  - code.review
+  - debugging.help
+
+blocked_intents:
+  - financial.advice
+  - political.discussion
+  - medical.advice
+  - code.exploit
+  - sys.control
+
+confidence:
+  threshold: 0.6
+  fallback: block
+
+roles:
+  admin:
+    allow: ALL
+  general:
+    allow:
+      - info.query
+      - info.summarize
+      - coding.question
+      - code.review
+      - debugging.help
