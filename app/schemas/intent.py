@@ -2,9 +2,12 @@
 High-Assurance Schemas — Hierarchical output contract.
 """
 
+from typing import Any, Optional
+
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+
 from app.core.taxonomy import IntentCategory, IntentTier
+
 
 class Message(BaseModel):
     role: str
@@ -13,7 +16,7 @@ class Message(BaseModel):
 
 class IntentRequest(BaseModel):
     text: Optional[str] = None
-    messages: Optional[List[Message]] = None
+    messages: Optional[list[Message]] = None
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     user_role: Optional[str] = "general"
@@ -30,7 +33,7 @@ class AnalysisBreakdown(BaseModel):
 class IntentResponse(BaseModel):
     """
     Structured facts from the High-Assurance pipeline.
-    
+
     Fields:
     - intent: The primary detected intent category.
     - confidence: How sure the system matches the intent (0.0-1.0).
@@ -46,9 +49,9 @@ class IntentResponse(BaseModel):
     decision: str = "allow"
     reason: Optional[str] = None
     processing_time_ms: Optional[float] = None
-    
+
     # Optional debug info
-    trace: Optional[Dict[str, Any]] = None
+    trace: Optional[dict[str, Any]] = None
 
 
 class IntentResponseDebug(IntentResponse):

@@ -1,16 +1,18 @@
+import logging
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
 from app.core.env import load_env_file
 from app.core.logging import setup_logging
 from app.services.runtime_config import CONFIG_PATH, RuntimeConfigError, load_runtime_config
-import logging
-import os
 
 # Load local development env vars before app startup.
 load_env_file(os.getenv("GUARDRAIL_ENV_FILE", ".env"))
 
-from app.api.routes import router as api_router
+from app.api.routes import router as api_router  # noqa: E402
 
 setup_logging(level="INFO")
 logger = logging.getLogger(__name__)

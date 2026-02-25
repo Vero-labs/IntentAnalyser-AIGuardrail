@@ -1,8 +1,8 @@
-import logging
-import json
 import hashlib
-from typing import Optional, Dict, Any, Union
+import json
+import logging
 import time
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class CacheService:
         self.redis = None
         self.memory_cache = {}
         self.max_memory_size = 1000
-        
+
         try:
             import redis
             # Short timeout to fail fast if Redis isn't running
@@ -21,15 +21,15 @@ class CacheService:
         except Exception:
             logger.warning("⚠️ Redis unavailable (Connection Refused). Falling back to In-Memory Cache.")
             self.redis = None
-        
+
         self.counters = {}
 
     def _hash_key(self, text: str) -> str:
         return hashlib.md5(text.encode()).hexdigest()
 
-    def get(self, text: str) -> Optional[Dict[str, Any]]:
+    def get(self, text: str) -> Optional[dict[str, Any]]:
         key = self._hash_key(text)
-        
+
         # 1. Try Redis
         if self.redis:
             try:
@@ -38,20 +38,20 @@ class CacheService:
                     return json.loads(val)
             except Exception as e:
                 logger.error(f"Redis Read Error: {e}")
-        
+
         # 2. Try Memory (Fallback)
         return self.memory_cache.get(key)
 
-    def set(self, text: str, data: Dict[str, Any], ttl_seconds: int = 3600):
+    def set(self, text: str, data: dict[str, Any], ttl_seconds: int = 3600):
         key = self._hash_key(text)
-        
+
         # 1. Write to Redis
         if self.redis:
             try:
                 self.redis.setex(key, ttl_seconds, json.dumps(data))
             except Exception as e:
                 logger.error(f"Redis Write Error: {e}")
-        
+
         # 2. Write to Memory (Always, as tier 1 or fallback)
         self._prune_memory()
         self.memory_cache[key] = data
@@ -70,20 +70,20 @@ class CacheService:
             except Exception as e:
                 logger.error(f"Redis Increment Error: {e}")
                 # Fallthrough to memory
-        
+
         # 2. Memory
         # Check expiry logic for memory counters (simplified)
         now = int(time.time())
         if key not in self.counters:
             self.counters[key] = {"count": 1, "expires_at": now + ttl_seconds}
             return 1
-        
+
         data = self.counters[key]
         if now > data["expires_at"]:
             # Expired, reset
             self.counters[key] = {"count": 1, "expires_at": now + ttl_seconds}
             return 1
-        
+
         # Increment
         data["count"] += 1
         return data["count"]

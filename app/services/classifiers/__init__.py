@@ -6,12 +6,12 @@ Detection produces structured facts. Never policy decisions.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Any
 
 
 class BaseClassifier(ABC):
     @abstractmethod
-    def classify(self, text: str) -> Dict[str, Any]:
+    def classify(self, text: str) -> dict[str, Any]:
         """
         Classify text along a single axis.
 

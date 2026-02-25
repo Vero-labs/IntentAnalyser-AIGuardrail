@@ -2,14 +2,15 @@ import logging
 import math
 import os
 import time
-from typing import Any, Dict, List, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Any, Optional, Union
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 Number = Union[int, float]
-Vector = List[float]
+Vector = list[float]
 
 
 def _is_number(value: Any) -> bool:
@@ -20,7 +21,7 @@ def _is_number_list(values: Any) -> bool:
     return isinstance(values, list) and bool(values) and all(_is_number(v) for v in values)
 
 
-def _mean_pool(vectors: List[List[Number]]) -> Vector:
+def _mean_pool(vectors: list[list[Number]]) -> Vector:
     if not vectors:
         return []
     width = len(vectors[0])
@@ -53,13 +54,13 @@ def coerce_embedding_vector(raw: Any) -> Vector:
             return [float(v) for v in raw[0]]
 
         if all(_is_number_list(item) for item in raw):
-            token_matrix: List[List[Number]] = raw
+            token_matrix: list[list[Number]] = raw
             return _mean_pool(token_matrix)
 
     raise ValueError(f"Unexpected embedding response shape: {type(raw)}")
 
 
-def coerce_embedding_batch(raw: Any, expected_count: int) -> List[Vector]:
+def coerce_embedding_batch(raw: Any, expected_count: int) -> list[Vector]:
     if expected_count <= 0:
         return []
 
@@ -87,9 +88,9 @@ def cosine_similarity(lhs: Sequence[float], rhs: Sequence[float]) -> float:
     dot = 0.0
     norm_l = 0.0
     norm_r = 0.0
-    for l, r in zip(lhs, rhs):
-        lf = float(l)
-        rf = float(r)
+    for lv, rv in zip(lhs, rhs):
+        lf = float(lv)
+        rf = float(rv)
         dot += lf * rf
         norm_l += lf * lf
         norm_r += rf * rf
@@ -131,7 +132,7 @@ class HuggingFaceInferenceClient:
             self.max_retries = 2
 
         token = (api_token or os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN") or "").strip()
-        self.headers: Dict[str, str] = {"Content-Type": "application/json"}
+        self.headers: dict[str, str] = {"Content-Type": "application/json"}
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
         else:
@@ -143,10 +144,10 @@ class HuggingFaceInferenceClient:
     def predict(
         self,
         inputs: Any,
-        parameters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        parameters: Optional[dict[str, Any]] = None,
+        options: Optional[dict[str, Any]] = None,
     ) -> Any:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "inputs": inputs,
             "options": {
                 "wait_for_model": True,
@@ -159,7 +160,7 @@ class HuggingFaceInferenceClient:
             payload["options"].update(options)
         return self._post_json(payload)
 
-    def _post_json(self, payload: Dict[str, Any]) -> Any:
+    def _post_json(self, payload: dict[str, Any]) -> Any:
         last_err: Optional[Exception] = None
 
         for attempt in range(self.max_retries + 1):

@@ -1,6 +1,9 @@
+from typing import Optional
+
 import httpx
-from typing import Optional, List, Dict, Any
-from app.schemas.intent import IntentRequest, IntentResponse
+
+from app.schemas.intent import IntentResponse
+
 
 class IntentClient:
     def __init__(self, base_url: str = "http://localhost:8002", timeout: float = 5.0):
@@ -20,7 +23,7 @@ class IntentClient:
         response.raise_for_status()
         return IntentResponse(**response.json())
 
-    async def analyze_chat(self, messages: List[Dict[str, str]], user_id: Optional[str] = None) -> IntentResponse:
+    async def analyze_chat(self, messages: list[dict[str, str]], user_id: Optional[str] = None) -> IntentResponse:
         """
         Analyze a conversation history.
         messages should be a list of dicts: [{"role": "user", "content": "..."}]

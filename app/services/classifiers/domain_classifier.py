@@ -10,11 +10,12 @@ Not keywords. Not regex. Embedding similarity against rich descriptions.
 Completely independent from Action and Risk classification.
 """
 
-import os
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
+
+from app.core.axes import DOMAIN_DESCRIPTIONS, Domain
 from app.services.classifiers import BaseClassifier
-from app.core.axes import Domain, DOMAIN_DESCRIPTIONS
 from app.services.hf_inference import (
     HuggingFaceInferenceClient,
     coerce_embedding_batch,
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Enriched examples per domain to build more robust centroids.
 # These supplement the canonical descriptions for better embedding coverage.
-DOMAIN_EXAMPLES: Dict[Domain, list] = {
+DOMAIN_EXAMPLES: dict[Domain, list] = {
     Domain.RECRUITMENT: [
         "What is the status of candidate John?",
         "Schedule an interview for tomorrow",
@@ -153,8 +154,8 @@ class DomainClassifier(BaseClassifier):
 
     def __init__(self):
         self.client = None
-        self.description_embeddings: Dict[Domain, List[float]] = {}
-        self.example_embeddings: Dict[Domain, List[List[float]]] = {}
+        self.description_embeddings: dict[Domain, list[float]] = {}
+        self.example_embeddings: dict[Domain, list[list[float]]] = {}
         self.model_name = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
     async def load(self):
@@ -181,21 +182,21 @@ class DomainClassifier(BaseClassifier):
             self.description_embeddings = {}
             self.example_embeddings = {}
 
-    def _embed_text(self, text: str) -> List[float]:
+    def _embed_text(self, text: str) -> list[float]:
         if not self.client:
             return []
         raw = self.client.predict(inputs=text)
         return coerce_embedding_vector(raw)
 
-    def _embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not self.client or not texts:
             return []
         raw = self.client.predict(inputs=texts)
         return coerce_embedding_batch(raw, expected_count=len(texts))
 
-    def _score_text(self, embedding: List[float]) -> Dict[str, float]:
+    def _score_text(self, embedding: list[float]) -> dict[str, float]:
         """Score a single embedding against all domain centroids."""
-        scores: Dict[str, float] = {}
+        scores: dict[str, float] = {}
         for domain in Domain:
             scores_to_consider = []
             if domain in self.description_embeddings:
@@ -210,7 +211,7 @@ class DomainClassifier(BaseClassifier):
             scores[domain.value] = max(scores_to_consider) if scores_to_consider else 0.0
         return scores
 
-    def classify(self, text: str) -> Dict[str, Any]:
+    def classify(self, text: str) -> dict[str, Any]:
         if not self.client:
             return {
                 "result": Domain.GENERAL_KNOWLEDGE,
@@ -247,7 +248,7 @@ class DomainClassifier(BaseClassifier):
             }
 
         # Score each window and take max per domain
-        all_scores: Dict[str, float] = {}
+        all_scores: dict[str, float] = {}
         for emb in embeddings:
             window_scores = self._score_text(emb)
             for domain_val, score in window_scores.items():
@@ -266,7 +267,7 @@ class DomainClassifier(BaseClassifier):
         # When top-2 domains are close, it's a signal of ambiguity or
         # adversarial framing. Surface as metadata for downstream consumers.
         sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
-        metadata: Dict[str, Any] = {}
+        metadata: dict[str, Any] = {}
         if len(sorted_scores) >= 2:
             gap = sorted_scores[0][1] - sorted_scores[1][1]
             if gap < 0.15:

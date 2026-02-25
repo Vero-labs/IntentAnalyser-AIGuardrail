@@ -1,14 +1,14 @@
 import unittest
 
-from app.core.taxonomy import IntentCategory
 from app.api.routes import (
-    _build_signal_contract,
     _build_policy_context,
+    _build_signal_contract,
     _detect_toxicity_lexicon,
     _is_fast_safe_candidate,
     _matches_safe_prompt_pattern,
     _validate_signal_contract,
 )
+from app.core.taxonomy import IntentCategory
 
 
 class SignalContractValidationTests(unittest.TestCase):

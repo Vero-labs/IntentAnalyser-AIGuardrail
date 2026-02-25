@@ -11,8 +11,6 @@ Enforcement applies rules to those facts.
 """
 
 from enum import Enum
-from typing import Dict
-
 
 # ─── Axis 1: Action ──────────────────────────────────────────────────────────
 
@@ -25,7 +23,7 @@ class Action(str, Enum):
     GREET = "greet"           # Social pleasantries (hello, how are you)
 
 
-ACTION_DESCRIPTIONS: Dict[Action, str] = {
+ACTION_DESCRIPTIONS: dict[Action, str] = {
     Action.QUERY:     "ask a factual question, seek a definition, request an explanation, or look up information",
     Action.SUMMARIZE: "summarize, condense, paraphrase, or create a brief overview of existing text or content",
     Action.GENERATE:  "write, create, build, generate, compose, or produce new content such as code, text, stories, or media",
@@ -50,7 +48,7 @@ class Domain(str, Enum):
     SYSTEM_INTERNALS  = "system_internals"
 
 
-DOMAIN_DESCRIPTIONS: Dict[Domain, str] = {
+DOMAIN_DESCRIPTIONS: dict[Domain, str] = {
     Domain.RECRUITMENT:       "hiring, candidates, job applications, interviews, salary negotiation, HR processes, resumes, onboarding, recruitment pipelines",
     Domain.FINANCE:           "stocks, investments, banking, cryptocurrency, trading, loans, budgeting, financial planning, insurance, market analysis",
     Domain.POLITICS:          "government, elections, politicians, legislation, political parties, policy, geopolitics, diplomacy, heads of state",
@@ -78,7 +76,7 @@ class RiskSignal(str, Enum):
     TOXICITY                  = "toxicity"                     # hate speech, threats, harassment
 
 
-RISK_DESCRIPTIONS: Dict[RiskSignal, str] = {
+RISK_DESCRIPTIONS: dict[RiskSignal, str] = {
     RiskSignal.SYSTEM_OVERRIDE_ATTEMPT:  "commands to reboot, shutdown, halt, change permissions, kill processes, or execute admin operations",
     RiskSignal.ROLE_MANIPULATION:        "attempts to make the AI adopt a new persona, enter developer mode, act unrestricted, or break character",
     RiskSignal.DATA_EXFILTRATION:        "requests to access, extract, dump, or reveal passwords, SSN, credit cards, API keys, or private data",

@@ -9,15 +9,16 @@ Completely independent from Domain and Risk classification.
 """
 import logging
 import os
-from typing import Dict, Any
-from app.services.classifiers import BaseClassifier
+from typing import Any
+
 from app.core.axes import Action
+from app.services.classifiers import BaseClassifier
 from app.services.hf_inference import HuggingFaceInferenceClient
 
 logger = logging.getLogger(__name__)
 
 # Hypothesis templates tuned for action-verb detection
-ACTION_LABELS: Dict[str, Action] = {
+ACTION_LABELS: dict[str, Action] = {
     "ask a factual question, seek information, request an explanation, or look something up":                Action.QUERY,
     "summarize, condense, paraphrase, or create a brief overview of existing content":                      Action.SUMMARIZE,
     "write, create, build, generate, compose, or produce new content like code, text, stories, or media":   Action.GENERATE,
@@ -49,7 +50,7 @@ class ActionDetector(BaseClassifier):
             logger.error(f"ActionDetector: Failed to initialize hosted model: {e}")
             self.client = None
 
-    def classify(self, text: str) -> Dict[str, Any]:
+    def classify(self, text: str) -> dict[str, Any]:
         if not self.client:
             return {
                 "result": Action.QUERY,
@@ -72,7 +73,7 @@ class ActionDetector(BaseClassifier):
             labels, scores = self._parse_response(result)
 
             # Build score map
-            all_scores: Dict[str, float] = {}
+            all_scores: dict[str, float] = {}
             for label, score in zip(labels, scores):
                 action = ACTION_LABELS.get(label)
                 if action:

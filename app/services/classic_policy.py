@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
-import re
-import os
+from typing import Any
 
 DEFAULT_POLICY_PATH = Path("app/policies/main.yaml")
 POLICY_PATH = Path(
@@ -19,27 +19,27 @@ class ClassicPolicyError(ValueError):
 @dataclass
 class RolePolicy:
     allow_all: bool
-    allowed_intents: List[str]
-    blocked_intents: List[str]
+    allowed_intents: list[str]
+    blocked_intents: list[str]
 
 
 @dataclass
 class ClassicPolicy:
     agent_name: str
-    allowed_intents: List[str]
-    blocked_intents: List[str]
+    allowed_intents: list[str]
+    blocked_intents: list[str]
     confidence_threshold: float
     confidence_fallback: str
-    roles: Dict[str, RolePolicy]
+    roles: dict[str, RolePolicy]
 
 
 def _normalize_intent_name(value: str) -> str:
     return str(value or "").strip().lower()
 
 
-def _dedupe(values: List[str]) -> List[str]:
+def _dedupe(values: list[str]) -> list[str]:
     seen = set()
-    ordered: List[str] = []
+    ordered: list[str] = []
     for raw in values:
         normalized = _normalize_intent_name(raw)
         if not normalized or normalized in seen:
@@ -49,7 +49,7 @@ def _dedupe(values: List[str]) -> List[str]:
     return ordered
 
 
-def _load_yaml(path: Path) -> Dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise ClassicPolicyError(f"Policy file not found: {path}")
 
@@ -79,7 +79,7 @@ def _strip_yaml_comment(line: str) -> str:
     """Strip inline comments while preserving quoted values."""
     in_single = False
     in_double = False
-    output: List[str] = []
+    output: list[str] = []
     for char in line:
         if char == "'" and not in_double:
             in_single = not in_single
@@ -118,12 +118,12 @@ def _parse_scalar(value: str) -> Any:
         return token
 
 
-def _parse_minimal_policy_yaml(content: str) -> Dict[str, Any]:
+def _parse_minimal_policy_yaml(content: str) -> dict[str, Any]:
     """
     Minimal parser for the classic policy schema.
     Supports the subset used by app/policies/main.yaml when PyYAML is unavailable.
     """
-    parsed: Dict[str, Any] = {}
+    parsed: dict[str, Any] = {}
     section: str | None = None
     current_role: str | None = None
     current_role_list_key: str | None = None
@@ -265,7 +265,7 @@ def load_classic_policy(path: Path = POLICY_PATH) -> ClassicPolicy:
     if not isinstance(roles_raw, dict):
         raise ClassicPolicyError("'roles' must be a mapping")
 
-    roles: Dict[str, RolePolicy] = {}
+    roles: dict[str, RolePolicy] = {}
     for role_name, role_cfg in roles_raw.items():
         role = _normalize_intent_name(str(role_name))
         if not role:
@@ -366,7 +366,7 @@ def evaluate_classic_policy(
     detected_intent: str,
     confidence: float,
     text: str,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     normalized_role = _normalize_intent_name(role) or "general"
     policy_intent = infer_policy_intent(detected_intent, text)
 

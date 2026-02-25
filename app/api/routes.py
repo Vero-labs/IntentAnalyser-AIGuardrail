@@ -12,20 +12,29 @@ Output is deterministic: intent, confidence, tier, decision.
 Trace available via ?debug=true.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
+import logging
+import os
+import re
+import time
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-from app.schemas.intent import AnalysisBreakdown, IntentRequest, IntentResponse
-from app.services.detectors.zeroshot import ZeroShotDetector
+
 from app.core.cache import CacheService
 from app.core.rate_limit import RateLimiter
-from app.services.priority_engine import PriorityEngine
-from app.services.detectors.regex import RegexDetector
+from app.core.taxonomy import IntentCategory, IntentTier
+from app.schemas.intent import AnalysisBreakdown, IntentRequest, IntentResponse
 from app.services.classic_policy import (
-    ClassicPolicyError,
     POLICY_PATH,
+    ClassicPolicyError,
     evaluate_classic_policy,
     load_classic_policy,
 )
+from app.services.detectors.regex import RegexDetector
+from app.services.detectors.zeroshot import ZeroShotDetector
+from app.services.priority_engine import PriorityEngine
 from app.services.runtime_config import (
     CONFIG_PATH,
     RuntimeConfigError,
@@ -33,13 +42,6 @@ from app.services.runtime_config import (
     load_runtime_config,
     read_provider_api_key,
 )
-from app.core.taxonomy import IntentCategory, IntentTier
-from typing import Dict, Any
-import logging
-import os
-import time
-import re
-import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -53,7 +55,7 @@ async def startup_event():
     logger.info("Initializing Classifiers...")
     classifiers["regex"] = RegexDetector()
     classifiers["zeroshot"] = ZeroShotDetector()
-    
+
     await classifiers["regex"].load()
     await classifiers["zeroshot"].load()
     logger.info("Classifiers Initialized.")
@@ -67,15 +69,15 @@ OVERRIDE_INTENTS = {
     IntentCategory.SYSTEM_OVERRIDE,
 }
 
-TIER_RANK: Dict[IntentTier, int] = {
+TIER_RANK: dict[IntentTier, int] = {
     IntentTier.P0: 0,
     IntentTier.P1: 1,
     IntentTier.P2: 2,
     IntentTier.P3: 3,
     IntentTier.P4: 4,
 }
-RANK_TO_TIER: Dict[int, IntentTier] = {v: k for k, v in TIER_RANK.items()}
-RISK_SCORE_BY_TIER: Dict[IntentTier, float] = {
+RANK_TO_TIER: dict[int, IntentTier] = {v: k for k, v in TIER_RANK.items()}
+RISK_SCORE_BY_TIER: dict[IntentTier, float] = {
     IntentTier.P0: 1.0,
     IntentTier.P1: 0.85,
     IntentTier.P2: 0.65,
@@ -223,7 +225,7 @@ def _has_pattern(text: str, patterns: list[re.Pattern]) -> bool:
     return any(pattern.search(text) for pattern in patterns)
 
 
-def _extract_intent_score(result: Dict[str, Any], intent: IntentCategory) -> float:
+def _extract_intent_score(result: dict[str, Any], intent: IntentCategory) -> float:
     metadata = result.get("metadata") if isinstance(result, dict) else None
     if isinstance(metadata, dict):
         all_scores = metadata.get("all_scores")
@@ -238,11 +240,11 @@ def _extract_intent_score(result: Dict[str, Any], intent: IntentCategory) -> flo
     return 0.0
 
 
-def _empty_detector_result() -> Dict[str, Any]:
+def _empty_detector_result() -> dict[str, Any]:
     return {"detected": False, "score": 0.0, "intent": None, "metadata": {}}
 
 
-def _detect_pii_patterns(text: str) -> Dict[str, Any]:
+def _detect_pii_patterns(text: str) -> dict[str, Any]:
     matches = []
     for name, pattern in PII_PATTERN_DEFINITIONS:
         if pattern.search(text):
@@ -259,7 +261,7 @@ def _detect_pii_patterns(text: str) -> Dict[str, Any]:
     }
 
 
-def _detect_toxicity_lexicon(text: str) -> Dict[str, Any]:
+def _detect_toxicity_lexicon(text: str) -> dict[str, Any]:
     lexicon_hits = []
     for name, pattern in TOXICITY_LEXICON_PATTERNS:
         if pattern.search(text):
@@ -307,7 +309,7 @@ def _detect_toxicity_lexicon(text: str) -> Dict[str, Any]:
     }
 
 
-def _detect_financial_keywords(text: str) -> Dict[str, Any]:
+def _detect_financial_keywords(text: str) -> dict[str, Any]:
     matches = []
     for name, pattern in FINANCIAL_KEYWORD_PATTERNS:
         if pattern.search(text):
@@ -353,10 +355,10 @@ def _matches_safe_prompt_pattern(text: str) -> bool:
 
 def _is_fast_safe_candidate(
     text: str,
-    regex_result: Dict[str, Any],
-    pii_pattern_result: Dict[str, Any],
-    toxicity_lexicon_result: Dict[str, Any],
-    financial_keyword_result: Dict[str, Any],
+    regex_result: dict[str, Any],
+    pii_pattern_result: dict[str, Any],
+    toxicity_lexicon_result: dict[str, Any],
+    financial_keyword_result: dict[str, Any],
 ) -> bool:
     if regex_result.get("detected"):
         return False
@@ -383,16 +385,16 @@ def _is_fast_safe_candidate(
 
 
 def _build_signal_contract(
-    regex_result: Dict[str, Any],
-    pii_pattern_result: Dict[str, Any],
-    toxicity_lexicon_result: Dict[str, Any],
-    financial_keyword_result: Dict[str, Any],
-    semantic_result: Dict[str, Any],
-    zeroshot_result: Dict[str, Any],
+    regex_result: dict[str, Any],
+    pii_pattern_result: dict[str, Any],
+    toxicity_lexicon_result: dict[str, Any],
+    financial_keyword_result: dict[str, Any],
+    semantic_result: dict[str, Any],
+    zeroshot_result: dict[str, Any],
     primary_intent: IntentCategory,
     primary_score: float,
     deterministic_safe_signal: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     override_sem_zs_score = max(
         max(_extract_intent_score(semantic_result, intent), _extract_intent_score(zeroshot_result, intent))
         for intent in OVERRIDE_INTENTS
@@ -456,7 +458,7 @@ def _build_signal_contract(
     return contract
 
 
-def _validate_signal_contract(signal_contract: Dict[str, Any]) -> None:
+def _validate_signal_contract(signal_contract: dict[str, Any]) -> None:
     required_boolean_fields = [
         "override_detected",
         "pii_detected",
@@ -491,7 +493,7 @@ def _validate_signal_contract(signal_contract: Dict[str, Any]) -> None:
         raise ValueError("'intent' must be a non-empty string")
 
 
-def _derive_final_tier(signal_contract: Dict[str, Any], user_role: str) -> tuple[IntentTier, int, bool]:
+def _derive_final_tier(signal_contract: dict[str, Any], user_role: str) -> tuple[IntentTier, int, bool]:
     tier_rank = 4  # P4 default
 
     if signal_contract["override_detected"]:
@@ -530,7 +532,7 @@ def _extract_text_from_message_content(content: Any) -> str:
     return "\n".join(chunks).strip()
 
 
-def _extract_proxy_prompt(payload: Dict[str, Any]) -> str:
+def _extract_proxy_prompt(payload: dict[str, Any]) -> str:
     messages = payload.get("messages")
     if isinstance(messages, list):
         rendered: list[str] = []
@@ -555,7 +557,7 @@ def _extract_proxy_prompt(payload: Dict[str, Any]) -> str:
     return ""
 
 
-def _extract_proxy_role(payload: Dict[str, Any]) -> str:
+def _extract_proxy_role(payload: dict[str, Any]) -> str:
     metadata = payload.get("metadata")
     if isinstance(metadata, dict):
         role = metadata.get("role")
@@ -837,7 +839,7 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
     # Cache result (TTL 60s)
     if not debug:
         cache_service.set(cache_key, resp_dict)
-    
+
     return resp_dict
 
 

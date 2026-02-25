@@ -1,6 +1,6 @@
-from typing import List, Dict, Tuple, Optional
-from app.core.taxonomy import IntentCategory, IntentTier, TIER_MAPPING
 import logging
+
+from app.core.taxonomy import TIER_MAPPING, IntentCategory, IntentTier
 
 logger = logging.getLogger(__name__)
 
@@ -10,13 +10,13 @@ class PriorityEngine:
     Resolves conflicts between multiple detected intents based on Tier Priority (P0 > P1 > ...).
     """
 
-    def resolve(self, candidates: List[Dict]) -> Tuple[IntentCategory, float, List[Dict]]:
+    def resolve(self, candidates: list[dict]) -> tuple[IntentCategory, float, list[dict]]:
         """
         Selects the single primary intent based on strict hierarchical priority.
-        
+
         Args:
             candidates: List of dicts, each with {"intent": IntentCategory, "score": float, "source": str}
-            
+
         Returns:
             (primary_intent, primary_score, sorted_candidates)
         """
@@ -38,14 +38,14 @@ class PriorityEngine:
         # We want the lowest priority number (P0=0) first.
         # If priorities are equal, we want the highest score first.
         sorted_candidates = sorted(
-            annotated, 
+            annotated,
             key=lambda x: (x["priority"], -x["score"])
         )
 
         primary = sorted_candidates[0]
         primary_intent = primary["intent"]
         primary_score = primary["score"]
-        
+
         # Log resolution if there was a conflict
         if len(candidates) > 1:
             logger.info(f"Priority Resolution: Selected {primary_intent} (Tier {primary['priority']}) from {len(candidates)} candidates.")

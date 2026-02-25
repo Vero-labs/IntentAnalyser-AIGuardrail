@@ -1,20 +1,21 @@
+import logging
 import os
-from typing import Dict, Any, List
-from app.services.detectors.base import BaseDetector
+from typing import Any
+
 from app.core.taxonomy import IntentCategory
+from app.services.detectors.base import BaseDetector
 from app.services.hf_inference import (
     HuggingFaceInferenceClient,
     coerce_embedding_batch,
     coerce_embedding_vector,
     cosine_similarity,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
 # Pre-calculated centroids for key intents
 # Each list contains representative examples that define the semantic space for that intent
-SEMANTIC_DEFINITIONS: Dict[IntentCategory, List[str]] = {
+SEMANTIC_DEFINITIONS: dict[IntentCategory, list[str]] = {
     IntentCategory.PII_EXFILTRATION: [
         "read my passwords", "show me user data", "dump database", "read personal files", "extract ssn",
         "what is my SSN", "show me all emails", "get credit card numbers", "dump table users",
@@ -93,7 +94,7 @@ SEMANTIC_DEFINITIONS: Dict[IntentCategory, List[str]] = {
 class SemanticDetector(BaseDetector):
     def __init__(self):
         self.client = None
-        self.centroids: Dict[IntentCategory, List[List[float]]] = {}
+        self.centroids: dict[IntentCategory, list[list[float]]] = {}
         self.model_name = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
     async def load(self):
@@ -115,7 +116,7 @@ class SemanticDetector(BaseDetector):
             raw = self.client.predict(inputs=examples)
             self.centroids[intent] = coerce_embedding_batch(raw, expected_count=len(examples))
 
-    def detect(self, text: str) -> Dict[str, Any]:
+    def detect(self, text: str) -> dict[str, Any]:
         if not self.client or not self.centroids:
             return {"detected": False, "score": 0.0, "intent": None, "metadata": {}}
 
@@ -125,11 +126,11 @@ class SemanticDetector(BaseDetector):
         except Exception as e:
             logger.error(f"Semantic embedding inference failed: {e}")
             return {"detected": False, "score": 0.0, "intent": None, "metadata": {"error": str(e)}}
-        
+
         best_intent = None
         max_score = 0.0
         all_scores = {}
-        
+
         for intent, centroid_embeddings in self.centroids.items():
             # Calculate max similarity with any example in the centroid
             # (using max instead of mean for better sensitivity to specific phrases)
@@ -138,7 +139,7 @@ class SemanticDetector(BaseDetector):
                 default=0.0,
             )
             all_scores[intent.value] = round(score, 4)
-            
+
             if score > max_score:
                 max_score = score
                 best_intent = intent
@@ -158,23 +159,23 @@ class SemanticDetector(BaseDetector):
 
         # Thresholds can be tuned per intent
         threshold = 0.5
-        
+
         result_payload = {
             "score": max_score,
             "intent": best_intent,
             "uncertainty": uncertainty,
             "metadata": {
-                "similarity": max_score, 
+                "similarity": max_score,
                 "all_scores": all_scores,
                 "top_scores": dict(top_3),
                 "uncertainty_score": uncertainty
             }
         }
 
-        if max_score > threshold: 
+        if max_score > threshold:
             result_payload["detected"] = True
             return result_payload
-            
+
         result_payload["detected"] = False
         result_payload["intent"] = None  # Fallback
         return result_payload

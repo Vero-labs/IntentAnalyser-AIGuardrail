@@ -8,11 +8,12 @@ like "write code for X" vs "summarize this document".
 The booster does NOT make final decisions — it produces a boost_map
 that the RiskEngine uses to adjust zero-shot/semantic scores.
 """
-import re
-from typing import Dict, Any, Optional
-from app.services.detectors.base import BaseDetector
-from app.core.taxonomy import IntentCategory
 import logging
+import re
+from typing import Any
+
+from app.core.taxonomy import IntentCategory
+from app.services.detectors.base import BaseDetector
 
 logger = logging.getLogger(__name__)
 
@@ -100,12 +101,12 @@ class KeywordBooster(BaseDetector):
     async def load(self):
         logger.info(f"KeywordBooster loaded with {len(_COMPILED_RULES)} intent rules.")
 
-    def detect(self, text: str) -> Dict[str, Any]:
+    def detect(self, text: str) -> dict[str, Any]:
         """
         Returns a boost_map: {IntentCategory: boost_value} for all matching patterns.
         Also returns the single strongest match as the primary result.
         """
-        boost_map: Dict[IntentCategory, float] = {}
+        boost_map: dict[IntentCategory, float] = {}
         match_details = {}
 
         for intent, rule in _COMPILED_RULES.items():

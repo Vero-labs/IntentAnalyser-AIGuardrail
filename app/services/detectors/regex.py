@@ -1,7 +1,9 @@
 import re
-from typing import Dict, Any
-from app.services.detectors.base import BaseDetector
+from typing import Any
+
 from app.core.taxonomy import IntentCategory
+from app.services.detectors.base import BaseDetector
+
 
 class RegexDetector(BaseDetector):
     def __init__(self):
@@ -78,7 +80,7 @@ class RegexDetector(BaseDetector):
                 r"private api keys"
             ]
         }
-        
+
         # Compile case-insensitive
         self.compiled = {}
         import logging
@@ -93,20 +95,20 @@ class RegexDetector(BaseDetector):
         1. Convert to lowercase
         2. Remove all non-alphanumeric characters (removes spaces, hyphens, dots, invisible chars)
         3. Simple leet-speak decode (1->i, 0->o, 3->e, @->a, 5->s, 7->t)
-        
+
         Example: "I-g-n-0-r-e" -> "ignore"
         """
         # 1. Lowercase
         text = text.lower()
-        
+
         # 2. Leet speak decode (before stripping symbols)
         replacements = {
-            '0': 'o', '1': 'i', '3': 'e', '4': 'a', '@': 'a', 
+            '0': 'o', '1': 'i', '3': 'e', '4': 'a', '@': 'a',
             '5': 's', '7': 't', '$': 's', '!': 'i'
         }
         for char, rep in replacements.items():
             text = text.replace(char, rep)
-            
+
         # 3. Strip all non-alphanumeric (keep only a-z)
         clean_text = re.sub(r'[^a-z]', '', text)
         return clean_text
@@ -118,7 +120,7 @@ class RegexDetector(BaseDetector):
         # Look for long strings of alphanumeric + +/= with at least 8 chars
         candidates = re.findall(r'[A-Za-z0-9+/=]{8,}', text)
         decoded_fragments = []
-        
+
         for cand in candidates:
             try:
                 # Add padding if missing
@@ -130,7 +132,7 @@ class RegexDetector(BaseDetector):
                     decoded_fragments.append(decoded_str)
             except (binascii.Error, UnicodeDecodeError):
                 continue
-                
+
         return " ".join(decoded_fragments)
 
     def _calculate_entropy(self, text: str) -> float:
@@ -141,7 +143,7 @@ class RegexDetector(BaseDetector):
         entropy = -sum([p * math.log(p) / math.log(2.0) for p in prob])
         return entropy
 
-    def detect(self, text: str) -> Dict[str, Any]:
+    def detect(self, text: str) -> dict[str, Any]:
         """
         Check for regex matches on:
         1. Raw text
@@ -162,24 +164,26 @@ class RegexDetector(BaseDetector):
         raw_text = text
         normalized_text = self._normalize(text)
         b64_text = self._try_base64_decode(text)
-        
+
         variations = {
             "RAW": raw_text,
             "NORMALIZED": normalized_text, # "ignorepreviousinstructions"
             "BASE64": b64_text
         }
-        
+
         logger.info(f"Regex check variations: {list(variations.keys())}")
-        if b64_text: logger.info(f"Base64 Decoded: {b64_text}")
-        
+        if b64_text:
+            logger.info(f"Base64 Decoded: {b64_text}")
+
         for v_name, v_text in variations.items():
-            if not v_text: continue
-            
+            if not v_text:
+                continue
+
             # For normalized text, we might need to strip spaces from patterns too
             # But simpler approach: The normalized text is "ignorepreviousinstructions"
             # So pattern "ignore previous instructions" won't match.
             # We need to normalize patterns ONCE during load? No, let's just strip spaces from pattern check for NORMALIZED variant.
-            
+
             for intent, patterns in self.compiled.items():
                 for pattern in patterns:
                     # Logic 1: Standard match (for RAW and BASE64)
@@ -187,7 +191,7 @@ class RegexDetector(BaseDetector):
                         if pattern.search(v_text):
                             logger.info(f"MATCH ({v_name}): {intent} on '{pattern.pattern}'")
                             return self._build_result(intent, 1.0, pattern.pattern)
-                    
+
                     # Logic 2: Normalized match (remove spaces from pattern)
                     else:
                         # Extract the raw string from pattern (it might be compiled)
@@ -198,7 +202,7 @@ class RegexDetector(BaseDetector):
                         if clean_pat and clean_pat.lower() in v_text:
                             logger.info(f"MATCH (NORMALIZED): {intent} on '{clean_pat}'")
                             return self._build_result(intent, 1.0, pattern.pattern)
-        
+
         return self._build_result(None, 0.0, None)
 
     def _build_result(self, intent, score, pattern):

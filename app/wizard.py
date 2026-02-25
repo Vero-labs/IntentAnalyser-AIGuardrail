@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import socket
-import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from app.services.runtime_config import ClassifierConfig, RuntimeConfig
 
@@ -12,7 +10,7 @@ from app.services.runtime_config import ClassifierConfig, RuntimeConfig
 class InitWizardResult:
     policy_yaml: str
     runtime_config: RuntimeConfig
-    env_vars: Dict[str, str]
+    env_vars: dict[str, str]
 
 
 # ── Use-case presets ──────────────────────────────────────────────────────────
@@ -72,7 +70,7 @@ USE_CASES = {
     },
 }
 
-PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
+PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "openai": {
         "model": "gpt-4o-mini",
         "base_url": "https://api.openai.com",
@@ -98,7 +96,7 @@ PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _parse_csv_list(raw: str) -> List[str]:
+def _parse_csv_list(raw: str) -> list[str]:
     return [token.strip() for token in raw.split(",") if token.strip()]
 
 
@@ -111,7 +109,7 @@ def _port_available(port: int) -> bool:
             return False
 
 
-def _policy_yaml_from_payload(payload: Dict[str, object]) -> str:
+def _policy_yaml_from_payload(payload: dict[str, object]) -> str:
     try:
         import yaml
     except ImportError as exc:  # pragma: no cover
@@ -142,7 +140,6 @@ def run_init_wizard() -> InitWizardResult:
         from rich.prompt import Confirm, IntPrompt, Prompt
         from rich.rule import Rule
         from rich.table import Table
-        from rich.text import Text
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Rich is required for interactive setup. Install: pip install rich") from exc
 
@@ -186,7 +183,7 @@ def run_init_wizard() -> InitWizardResult:
     agent_name = Prompt.ask("[bold]Agent name[/bold]", default="assistant-agent")
 
     # Build policy payload from preset
-    payload: Dict[str, object] = {
+    payload: dict[str, object] = {
         "agent": {"name": agent_name},
         "allowed_intents": list(use_case["allowed"]),
         "blocked_intents": list(use_case["blocked"]),
@@ -303,7 +300,7 @@ def run_init_wizard() -> InitWizardResult:
     console.print()
 
     if not Confirm.ask("[bold]Write configuration files?[/bold]", default=True):
-        console.print("[yellow]Aborted.[/yellow] Run [bold]./guardrail init[/bold] again to restart.")
+        console.print("[yellow]Aborted.[/yellow] Run [bold]guardrail init[/bold] again to restart.")
         raise SystemExit(0)
 
     # ── Write files (with spinner) ────────────────────────────────────────
@@ -372,9 +369,9 @@ def run_init_wizard() -> InitWizardResult:
     console.print(
         Panel(
             "[bold]1.[/bold] Start the server:\n"
-            f"   [cyan]./guardrail run[/cyan]\n\n"
+            f"   [cyan]guardrail run[/cyan]\n\n"
             "[bold]2.[/bold] Test a prompt:\n"
-            f"   [cyan]./guardrail test[/cyan]\n\n"
+            f"   [cyan]guardrail test[/cyan]\n\n"
             "[bold]3.[/bold] Integrate (Python):\n"
             f"   [dim]from app.client.client import IntentClient[/dim]\n"
             f"   [dim]client = IntentClient(base_url=\"http://localhost:{server_port}\")[/dim]\n"

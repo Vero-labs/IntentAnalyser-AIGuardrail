@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class IntentTier(str, Enum):
     P0 = "P0_Critical"      # System Integrity (Injection, Jailbreak)
     P1 = "P1_High"          # Data/Agent Security (PII, Tool Misuse)
@@ -17,19 +18,19 @@ class IntentCategory(str, Enum):
     PROMPT_INJECTION = "code.exploit"
     JAILBREAK = "security.jailbreak"
     SYSTEM_OVERRIDE = "sys.control"
-    
+
     # Tier P1: High (Data & Agent Security)
     PII_EXFILTRATION = "info.query.pii"
     TOOL_MISUSE = "tool.dangerous"
-    
+
     # Tier P2: Medium (Content Safety)
     TOXICITY = "safety.toxicity"
-    
+
     # Tier P3: Low (Business Logic / Policy)
     OFF_TOPIC = "conv.other"
     FINANCIAL_ADVICE = "policy.financial_advice"
     CODE_EXECUTION = "code.generate"
-    
+
     # Tier P4: Info (Benign / Operational)
     INFO_QUERY = "info.query"
     INFO_SUMMARIZE = "info.summarize"
@@ -60,16 +61,16 @@ TIER_MAPPING = {
     IntentCategory.PROMPT_INJECTION: IntentTier.P0,
     IntentCategory.JAILBREAK: IntentTier.P0,
     IntentCategory.SYSTEM_OVERRIDE: IntentTier.P0,
-    
+
     IntentCategory.PII_EXFILTRATION: IntentTier.P1,
     IntentCategory.TOOL_MISUSE: IntentTier.P1,
-    
+
     IntentCategory.TOXICITY: IntentTier.P2,
-    
+
     IntentCategory.OFF_TOPIC: IntentTier.P3,
     IntentCategory.FINANCIAL_ADVICE: IntentTier.P3,
     IntentCategory.CODE_EXECUTION: IntentTier.P3,
-    
+
     IntentCategory.INFO_QUERY: IntentTier.P4,
     IntentCategory.INFO_SUMMARIZE: IntentTier.P4,
     IntentCategory.TOOL_AUTHORIZED: IntentTier.P4,

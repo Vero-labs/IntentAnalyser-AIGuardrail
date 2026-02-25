@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
-from app.core.taxonomy import IntentCategory
+from typing import Any
+
 
 class BaseDetector(ABC):
     @abstractmethod
-    def detect(self, text: str) -> Dict[str, Any]:
+    def detect(self, text: str) -> dict[str, Any]:
         """
         Analyze text and return detection results.
         Must return a dict with at least:
@@ -14,7 +14,7 @@ class BaseDetector(ABC):
         - metadata: Dict
         """
         pass
-    
+
     async def load(self):
         """Optional async load method for models"""
         pass

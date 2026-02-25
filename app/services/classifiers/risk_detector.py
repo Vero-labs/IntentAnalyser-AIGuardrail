@@ -17,14 +17,15 @@ If ANY signal fires, the corresponding RiskSignal is emitted.
 Multiple signals can fire simultaneously (multi-label, not single-label).
 """
 
-import re
-import os
 import base64
 import binascii
 import logging
-from typing import Dict, Any, List, Set
-from app.services.classifiers import BaseClassifier
+import os
+import re
+from typing import Any
+
 from app.core.axes import RiskSignal
+from app.services.classifiers import BaseClassifier
 from app.services.hf_inference import (
     HuggingFaceInferenceClient,
     coerce_embedding_batch,
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ─── Regex Patterns (Deterministic Layer) ─────────────────────────────────────
 # Organized by RiskSignal, not by "intent".
 
-RISK_PATTERNS: Dict[RiskSignal, List[str]] = {
+RISK_PATTERNS: dict[RiskSignal, list[str]] = {
     RiskSignal.INSTRUCTION_SHADOWING: [
         r"\b(?:ignore|bypass|override|forget|reset|clear|disregard)\b.*\b(?:instructions?|rules?|prompts?|filters?|constraints?|guidelines?|system|safety)\b",
         r"\b(?:instead|rather)\b.*\b(?:do|say|act|reveal|tell)\b",
@@ -106,7 +107,7 @@ RISK_PATTERNS: Dict[RiskSignal, List[str]] = {
 # ─── Semantic Centroids for Behavioral Anomalies ──────────────────────────────
 # These catch paraphrased or novel attacks that regex misses.
 
-RISK_CENTROIDS: Dict[RiskSignal, List[str]] = {
+RISK_CENTROIDS: dict[RiskSignal, list[str]] = {
     RiskSignal.INSTRUCTION_SHADOWING: [
         "ignore previous instructions",
         "forget what you were told",
@@ -197,9 +198,9 @@ class RiskDetector(BaseClassifier):
     """
 
     def __init__(self):
-        self.compiled_patterns: Dict[RiskSignal, List[re.Pattern]] = {}
+        self.compiled_patterns: dict[RiskSignal, list[re.Pattern]] = {}
         self.client = None
-        self.semantic_centroids: Dict[RiskSignal, List[List[float]]] = {}
+        self.semantic_centroids: dict[RiskSignal, list[list[float]]] = {}
         self.model_name = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
     async def load(self):
@@ -249,9 +250,9 @@ class RiskDetector(BaseClassifier):
 
     # ─── Core Detection ───────────────────────────────────────────────────
 
-    def _regex_scan(self, text: str) -> Dict[RiskSignal, str]:
+    def _regex_scan(self, text: str) -> dict[RiskSignal, str]:
         """Run regex against raw, normalized, and base64-decoded text. Returns signal→matched_pattern."""
-        hits: Dict[RiskSignal, str] = {}
+        hits: dict[RiskSignal, str] = {}
         variations = {
             "raw": text,
             "normalized": self._normalize(text),
@@ -278,7 +279,7 @@ class RiskDetector(BaseClassifier):
 
         return hits
 
-    def _semantic_scan(self, text: str, threshold: float = 0.65) -> Dict[RiskSignal, float]:
+    def _semantic_scan(self, text: str, threshold: float = 0.65) -> dict[RiskSignal, float]:
         """Semantic similarity against risk centroids. Returns signal→score for anything above threshold."""
         if not self.client or not self.semantic_centroids:
             return {}
@@ -290,7 +291,7 @@ class RiskDetector(BaseClassifier):
             logger.error(f"RiskDetector semantic inference failed: {e}")
             return {}
 
-        hits: Dict[RiskSignal, float] = {}
+        hits: dict[RiskSignal, float] = {}
 
         for signal, centroid_embeddings in self.semantic_centroids.items():
             max_score = max(
@@ -304,7 +305,7 @@ class RiskDetector(BaseClassifier):
 
     # ─── Public Interface ─────────────────────────────────────────────────
 
-    def classify(self, text: str) -> Dict[str, Any]:
+    def classify(self, text: str) -> dict[str, Any]:
         """
         Returns:
           - signals:          List[RiskSignal] — all detected signals (multi-label)
@@ -316,13 +317,13 @@ class RiskDetector(BaseClassifier):
         """
         # Stage 1: Regex (instant, deterministic)
         regex_hits = self._regex_scan(text)
-        
+
         # Stage 2: Semantic (embedding similarity)
         semantic_hits = self._semantic_scan(text)
 
         # Merge signals from both layers
-        all_signals: Set[RiskSignal] = set()
-        detection_paths: List[str] = []
+        all_signals: set[RiskSignal] = set()
+        detection_paths: list[str] = []
 
         if regex_hits:
             all_signals.update(regex_hits.keys())

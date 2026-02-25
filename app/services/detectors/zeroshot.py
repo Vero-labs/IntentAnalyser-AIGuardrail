@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from pathlib import Path
 import logging
 import re
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 import httpx
 
-from app.services.detectors.base import BaseDetector
 from app.core.taxonomy import IntentCategory
+from app.services.detectors.base import BaseDetector
 from app.services.hf_inference import HuggingFaceInferenceClient
 from app.services.runtime_config import CONFIG_PATH, RuntimeConfigError, default_runtime_config, load_runtime_config
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 RISK_THRESHOLD = 0.25
 WORD_RE = re.compile(r"[a-zA-Z0-9_]+")
 
-LOCAL_CUES: Dict[IntentCategory, Sequence[str]] = {
+LOCAL_CUES: dict[IntentCategory, Sequence[str]] = {
     IntentCategory.PROMPT_INJECTION: (
         "ignore previous instructions",
         "ignore all previous",
@@ -122,7 +123,7 @@ LOCAL_CUES: Dict[IntentCategory, Sequence[str]] = {
 
 class ZeroShotDetector(BaseDetector):
     def __init__(self):
-        self.client: Optional[HuggingFaceInferenceClient] = None
+        self.client: HuggingFaceInferenceClient | None = None
         self.classifier_mode = "local"
         self.classifier_model = "distilbert-mnli"
         self.classifier_local_model_dir = ""
@@ -195,7 +196,7 @@ class ZeroShotDetector(BaseDetector):
         elif cfg.mode == "external":
             logger.info("External classifier mode enabled. endpoint=%s", cfg.endpoint)
 
-    def detect(self, text: str) -> Dict[str, Any]:
+    def detect(self, text: str) -> dict[str, Any]:
         try:
             if self.classifier_mode == "hosted":
                 if not self.client:
@@ -225,7 +226,7 @@ class ZeroShotDetector(BaseDetector):
             top_desc = labels[0]
             top_score = scores[0] if scores else 0.0
 
-            score_map: Dict[IntentCategory, float] = {}
+            score_map: dict[IntentCategory, float] = {}
             for label, score in zip(labels, scores):
                 cat = self.intent_map.get(label)
                 if cat:
@@ -282,11 +283,11 @@ class ZeroShotDetector(BaseDetector):
                 "metadata": {"error": str(exc)},
             }
 
-    def _run_local_classifier(self, text: str) -> Tuple[List[str], List[float]]:
+    def _run_local_classifier(self, text: str) -> tuple[list[str], list[float]]:
         input_text = text.lower()
         tokens = set(WORD_RE.findall(input_text))
 
-        ranked: List[Tuple[str, float]] = []
+        ranked: list[tuple[str, float]] = []
         for label in self.candidate_labels:
             intent = self.intent_map[label]
             label_tokens = set(WORD_RE.findall(label.lower()))
@@ -314,7 +315,7 @@ class ZeroShotDetector(BaseDetector):
         scores = [float(round(score, 6)) for _, score in ranked]
         return labels, scores
 
-    def _run_external_classifier(self, text: str) -> Tuple[List[str], List[float]]:
+    def _run_external_classifier(self, text: str) -> tuple[list[str], list[float]]:
         if not self.classifier_endpoint:
             raise RuntimeError("classifier.endpoint is required for external classifier mode")
 
@@ -337,7 +338,7 @@ class ZeroShotDetector(BaseDetector):
         response.raise_for_status()
         return self._parse_response(response.json())
 
-    def _parse_response(self, raw_result: Any) -> Tuple[List[str], List[float]]:
+    def _parse_response(self, raw_result: Any) -> tuple[list[str], list[float]]:
         if isinstance(raw_result, dict):
             labels = raw_result.get("labels")
             scores = raw_result.get("scores")
@@ -346,7 +347,7 @@ class ZeroShotDetector(BaseDetector):
 
             all_scores = raw_result.get("all_scores")
             if isinstance(all_scores, dict) and all_scores:
-                mapped: List[Tuple[str, float]] = []
+                mapped: list[tuple[str, float]] = []
                 for raw_intent, score in all_scores.items():
                     intent = self._intent_from_value(str(raw_intent))
                     if intent is None:
@@ -376,7 +377,7 @@ class ZeroShotDetector(BaseDetector):
         raise ValueError(f"Unexpected classifier response format: {type(raw_result)}")
 
     @staticmethod
-    def _intent_from_value(value: str) -> Optional[IntentCategory]:
+    def _intent_from_value(value: str) -> IntentCategory | None:
         lowered = value.strip().lower()
         for intent in IntentCategory:
             if lowered == intent.value:

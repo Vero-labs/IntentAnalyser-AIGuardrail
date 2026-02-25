@@ -1,6 +1,6 @@
-import requests
-import json
 import time
+
+import requests
 
 BASE_URL = "http://localhost:8002/intent"
 
@@ -25,48 +25,48 @@ def test_recruiter_policy():
             print(f"[ERROR] {description}: {e}")
 
     print("--- Verifying Recruiter Policy ---")
-    
+
     # Wait for server
     time.sleep(2)
 
     # Case 1: Recruiter asking about recruitment (Should Allow)
     check(
-        "Schedule an interview with the candidate", 
-        "recruiter", 
-        "allow", 
+        "Schedule an interview with the candidate",
+        "recruiter",
+        "allow",
         "Recruiter: Recruitment Query"
     )
 
     # Case 2: Recruiter saying Hello (Should Allow via global greet allow)
     check(
-        "Hello there", 
-        "recruiter", 
-        "allow", 
+        "Hello there",
+        "recruiter",
+        "allow",
         "Recruiter: Greeting"
     )
 
     # Case 3: Recruiter asking random question (Should Block)
     # "Who is Jack?" -> Domain: general_knowledge -> Recruiter only allows 'recruitment'
     check(
-        "Who is Jack?", 
-        "recruiter", 
-        "block", 
+        "Who is Jack?",
+        "recruiter",
+        "block",
         "Recruiter: Random Question (Who is Jack?)"
     )
 
     # Case 4: General user asking random question (Should Allow)
     check(
-        "Who is Jack?", 
-        "general", 
-        "allow", 
+        "Who is Jack?",
+        "general",
+        "allow",
         "General: Random Question (Who is Jack?)"
     )
 
     # Case 5: Recruiter asking for Python code (Should Block - domain technical)
     check(
-        "Write a python script", 
-        "recruiter", 
-        "block", 
+        "Write a python script",
+        "recruiter",
+        "block",
         "Recruiter: Code Generation"
     )
 

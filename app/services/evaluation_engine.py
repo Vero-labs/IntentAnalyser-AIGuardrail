@@ -17,8 +17,9 @@ Key design principles:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
+from typing import Optional
+
 from app.core.axes import Action, Domain, RiskSignal
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ CRITICAL_SIGNALS = {
 class RoleScope:
     """Defines what an agent role is ALLOWED to do."""
     role_name: str
-    allowed_domains: List[Domain] = field(default_factory=list)
-    allowed_actions: List[Action] = field(default_factory=list)
+    allowed_domains: list[Domain] = field(default_factory=list)
+    allowed_actions: list[Action] = field(default_factory=list)
     # If empty, no domain/action restriction is applied (open scope)
 
 
@@ -54,12 +55,12 @@ class EvaluationResult:
     decision: str                       # "allow", "block", "ambiguous"
     reason: str                         # Human-readable explanation
     blocked_by: Optional[str] = None    # Which rule triggered the block
-    risk_signals: List[RiskSignal] = field(default_factory=list)
+    risk_signals: list[RiskSignal] = field(default_factory=list)
 
 
 # ─── Pre-defined Role Scopes ─────────────────────────────────────────────────
 
-ROLE_SCOPES: Dict[str, RoleScope] = {
+ROLE_SCOPES: dict[str, RoleScope] = {
     "recruiter": RoleScope(
         role_name="recruiter",
         allowed_domains=[Domain.RECRUITMENT, Domain.GENERAL_KNOWLEDGE],
@@ -89,7 +90,7 @@ def evaluate(
     action_confidence: float,
     domain: Domain,
     domain_confidence: float,
-    risk_signals: List[RiskSignal],
+    risk_signals: list[RiskSignal],
     risk_score: float,
     role: str = "general",
 ) -> EvaluationResult:

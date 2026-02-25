@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict
 import os
 import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 DEFAULT_CONFIG_PATH = Path("guardrail.config.yaml")
 CONFIG_PATH = Path(
@@ -68,7 +68,7 @@ def default_runtime_config() -> RuntimeConfig:
     )
 
 
-def _load_yaml(path: Path) -> Dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise RuntimeConfigError(f"Config file not found: {path}")
 
@@ -111,7 +111,7 @@ def _parse_bool(value: Any, default: bool = False) -> bool:
     return normalized in {"1", "true", "yes", "on"}
 
 
-def _load_classifier_config(raw: Dict[str, Any]) -> ClassifierConfig:
+def _load_classifier_config(raw: dict[str, Any]) -> ClassifierConfig:
     classifier_raw = raw.get("classifier", {})
     if classifier_raw is None:
         classifier_raw = {}
@@ -239,7 +239,7 @@ def load_runtime_config(path: Path = CONFIG_PATH) -> RuntimeConfig:
     )
 
 
-def runtime_config_to_dict(config: RuntimeConfig) -> Dict[str, Any]:
+def runtime_config_to_dict(config: RuntimeConfig) -> dict[str, Any]:
     return {
         "provider": {
             "name": config.provider_name,
