@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from app.services.runtime_config import RuntimeConfig
+from app.services.runtime_config import ClassifierConfig, RuntimeConfig
 
 
 @dataclass
@@ -317,11 +317,21 @@ def run_init_wizard() -> InitWizardResult:
         policy_mode=policy_mode,
         request_timeout_seconds=60.0,
         prompt_logging_enabled=prompt_logging,
+        classifier=ClassifierConfig(
+            mode="local",
+            model="distilbert-mnli",
+            local_model_dir="",
+            provider="huggingface",
+            api_token="",
+            endpoint="",
+            auth_header="",
+            timeout_seconds=8.0,
+            offline_mode=True,
+        ),
     )
 
     env_vars = {
         provider_api_key_env: provider_api_key_value,
-        "HUGGINGFACE_API_TOKEN": "",
     }
 
     result = InitWizardResult(

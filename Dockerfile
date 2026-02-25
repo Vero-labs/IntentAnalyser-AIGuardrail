@@ -18,8 +18,16 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system app && adduser --system --group app
+# OCI metadata labels
+LABEL org.opencontainers.image.title="Intent Analyzer Gateway" \
+      org.opencontainers.image.description="AI safety guardrail for LLM applications" \
+      org.opencontainers.image.source="https://github.com/Vero-labs/IntentAnalyser-AIGuardrail" \
+      org.opencontainers.image.licenses="MIT"
+
+# Install curl for health checks, create non-root user
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system app && adduser --system --group app
 
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/app/.local
@@ -29,19 +37,6 @@ ENV PYTHONPATH=/home/app/.local/lib/python3.9/site-packages
 
 # Copy application code
 COPY app /app/app
-# policies is inside app locally: app/policies
-# But we need it in python path or relative.
-# Simpler: Copy everything as is.
-
-# If local structure is:
-# /app
-#   /policies
-#     main.cedar
-
-# Dockerfile is at root.
-# So COPY app /app/app copies everything in app folder to /app/app in container.
-# If policies is in app/policies, it's already copied!
-# Let's double check file structure.
 
 # Ownership
 RUN chown -R app:app /app && chown -R app:app /home/app
@@ -53,6 +48,10 @@ ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 8000
+
+# Health check — orchestrators (Docker, ECS, K8s liveness probes) use this
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

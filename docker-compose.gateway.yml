@@ -3,7 +3,7 @@ services:
     image: intent-llm-gateway:latest
     build: .
     ports:
-      - "8000:8000"
+      - "${GATEWAY_PORT:-8000}:8000"
     environment:
       - GUARDRAIL_CONFIG_PATH=/etc/guardrail/guardrail.config.yaml
       - GUARDRAIL_POLICY_PATH=/etc/guardrail/main.yaml
@@ -14,6 +14,7 @@ services:
       - ./configs/local/guardrail.config.yaml:/etc/guardrail/guardrail.config.yaml:ro
       - ./configs/policies/main.yaml:/etc/guardrail/main.yaml:ro
       - ./configs/local/.env.gateway:/etc/guardrail/.env.gateway:ro
+      - ./models:/models:ro
     depends_on:
       - redis
     restart: unless-stopped

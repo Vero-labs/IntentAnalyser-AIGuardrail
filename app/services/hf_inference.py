@@ -104,18 +104,20 @@ class HuggingFaceInferenceClient:
     def __init__(
         self,
         model_id: str,
+        api_token: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
         max_retries: Optional[int] = None,
+        base_url: Optional[str] = None,
     ):
         if not model_id:
             raise ValueError("model_id is required")
 
         self.model_id = model_id
-        base_url = os.getenv(
+        resolved_base_url = base_url or os.getenv(
             "HF_INFERENCE_BASE_URL",
             "https://router.huggingface.co/hf-inference/models",
         )
-        self.url = f"{base_url.rstrip('/')}/{model_id}"
+        self.url = f"{resolved_base_url.rstrip('/')}/{model_id}"
 
         timeout = timeout_seconds if timeout_seconds is not None else os.getenv("HF_TIMEOUT_SECONDS", "20")
         retries = max_retries if max_retries is not None else os.getenv("HF_MAX_RETRIES", "2")
@@ -128,7 +130,7 @@ class HuggingFaceInferenceClient:
         except (TypeError, ValueError):
             self.max_retries = 2
 
-        token = (os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN") or "").strip()
+        token = (api_token or os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN") or "").strip()
         self.headers: Dict[str, str] = {"Content-Type": "application/json"}
         if token:
             self.headers["Authorization"] = f"Bearer {token}"

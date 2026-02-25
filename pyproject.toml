@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-guardrail"
+version = "4.0.0"
+description = "AI safety guardrail — intent analysis, prompt injection detection, and policy enforcement for LLM applications"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Vero Labs" },
+]
+keywords = ["ai", "guardrail", "llm", "safety", "intent-analysis", "prompt-injection"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.24.0",
+    "redis>=5.0.0",
+    "pyyaml",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0",
+    "httpx",
+]
+build = [
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+guardrail = "app.policy_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Vero-labs/IntentAnalyser-AIGuardrail"
+Repository = "https://github.com/Vero-labs/IntentAnalyser-AIGuardrail"
+Documentation = "https://github.com/Vero-labs/IntentAnalyser-AIGuardrail/tree/main/docs"
+Issues = "https://github.com/Vero-labs/IntentAnalyser-AIGuardrail/issues"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

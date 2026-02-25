@@ -150,6 +150,11 @@ def cmd_policy_validate(args: argparse.Namespace) -> int:
         print("[WARN] Runtime config file not found; using built-in defaults.")
         print(f"       Create {CONFIG_PATH} with './guardrail init --force' for production.")
     print(f"[INFO] Active provider={runtime_config.provider_name} model={runtime_config.provider_model}")
+    print(
+        "[INFO] Active classifier="
+        f"{runtime_config.classifier.mode} model={runtime_config.classifier.model} "
+        f"offline_mode={runtime_config.classifier.offline_mode}"
+    )
     return 0
 
 
@@ -163,6 +168,14 @@ def cmd_policy_show(args: argparse.Namespace) -> int:
     print(f"  model={runtime_config.provider_model}")
     print(f"  provider_base_url={runtime_config.provider_base_url}")
     print(f"  api_key_env={runtime_config.provider_api_key_env}")
+    print(
+        "  classifier="
+        f"{runtime_config.classifier.mode}"
+        f" (model={runtime_config.classifier.model}"
+        f", offline_mode={runtime_config.classifier.offline_mode}"
+        f", local_model_dir={runtime_config.classifier.local_model_dir or '-'}"
+        ")"
+    )
     print(f"  bind={runtime_config.server_host}:{runtime_config.server_port}")
     return 0
 
@@ -268,7 +281,6 @@ def _build_init_result() -> InitWizardResult:
         runtime_config=runtime_config,
         env_vars={
             runtime_config.provider_api_key_env: "",
-            "HUGGINGFACE_API_TOKEN": "",
         },
     )
 

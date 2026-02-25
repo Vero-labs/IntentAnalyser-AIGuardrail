@@ -3,13 +3,20 @@ provider:
   model: gpt-4o-mini
   base_url: https://api.openai.com
   api_key_env: OPENAI_API_KEY
-
+classifier:
+  mode: local
+  model: distilbert-mnli
+  local_model_dir: "/models/distilbert-mnli"
+  provider: huggingface
+  api_token: ""
+  endpoint: ""
+  auth_header: ""
+  timeout_seconds: 8.0
+  offline_mode: true
 server:
   host: 0.0.0.0
   port: 8000
-
 policy_mode: custom
 request_timeout_seconds: 60.0
-
 logging:
   store_prompts: false

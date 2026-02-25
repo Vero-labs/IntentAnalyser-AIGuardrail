@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 import os
+import re
 
 DEFAULT_CONFIG_PATH = Path("guardrail.config.yaml")
 CONFIG_PATH = Path(
@@ -13,6 +14,19 @@ CONFIG_PATH = Path(
 
 class RuntimeConfigError(ValueError):
     """Raised when runtime configuration is invalid."""
+
+
+@dataclass
+class ClassifierConfig:
+    mode: str
+    model: str
+    local_model_dir: str
+    provider: str
+    api_token: str
+    endpoint: str
+    auth_header: str
+    timeout_seconds: float
+    offline_mode: bool
 
 
 @dataclass
@@ -26,6 +40,7 @@ class RuntimeConfig:
     policy_mode: str
     request_timeout_seconds: float
     prompt_logging_enabled: bool
+    classifier: ClassifierConfig
 
 
 def default_runtime_config() -> RuntimeConfig:
@@ -39,6 +54,17 @@ def default_runtime_config() -> RuntimeConfig:
         policy_mode="custom",
         request_timeout_seconds=60.0,
         prompt_logging_enabled=False,
+        classifier=ClassifierConfig(
+            mode="local",
+            model="distilbert-mnli",
+            local_model_dir="",
+            provider="huggingface",
+            api_token="",
+            endpoint="",
+            auth_header="",
+            timeout_seconds=8.0,
+            offline_mode=True,
+        ),
     )
 
 
@@ -63,6 +89,80 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise RuntimeConfigError("guardrail.config.yaml must be a top-level mapping")
     return raw
+
+
+def _resolve_env_placeholders(value: str) -> str:
+    """Resolve ${VAR_NAME} placeholders from environment variables."""
+
+    def repl(match: re.Match[str]) -> str:
+        return os.getenv(match.group(1), "")
+
+    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", repl, value)
+
+
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return default
+    return normalized in {"1", "true", "yes", "on"}
+
+
+def _load_classifier_config(raw: Dict[str, Any]) -> ClassifierConfig:
+    classifier_raw = raw.get("classifier", {})
+    if classifier_raw is None:
+        classifier_raw = {}
+    if not isinstance(classifier_raw, dict):
+        raise RuntimeConfigError("'classifier' must be a mapping")
+
+    mode = str(classifier_raw.get("mode", "local")).strip().lower()
+    if mode not in {"local", "hosted", "external"}:
+        raise RuntimeConfigError("classifier.mode must be one of: local, hosted, external")
+
+    model_default = "distilbert-mnli" if mode == "local" else "facebook/bart-large-mnli"
+    model = str(classifier_raw.get("model", model_default)).strip() or model_default
+    local_model_dir = _resolve_env_placeholders(str(classifier_raw.get("local_model_dir", "")).strip())
+
+    provider = str(classifier_raw.get("provider", "huggingface")).strip().lower()
+    if mode == "hosted" and provider not in {"huggingface"}:
+        raise RuntimeConfigError("classifier.provider must be 'huggingface' in hosted mode")
+
+    api_token = _resolve_env_placeholders(str(classifier_raw.get("api_token", "")).strip())
+    endpoint = _resolve_env_placeholders(str(classifier_raw.get("endpoint", "")).strip())
+    auth_header = _resolve_env_placeholders(str(classifier_raw.get("auth_header", "")).strip())
+
+    timeout_raw = classifier_raw.get("timeout_seconds", 8.0)
+    try:
+        timeout_seconds = float(timeout_raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeConfigError("classifier.timeout_seconds must be numeric") from exc
+    if timeout_seconds <= 0:
+        raise RuntimeConfigError("classifier.timeout_seconds must be > 0")
+
+    offline_mode = _parse_bool(classifier_raw.get("offline_mode", mode == "local"), default=(mode == "local"))
+
+    if mode == "external" and not endpoint:
+        raise RuntimeConfigError("classifier.endpoint is required when classifier.mode=external")
+
+    if offline_mode and mode == "hosted":
+        raise RuntimeConfigError(
+            "classifier.offline_mode=true is incompatible with classifier.mode=hosted"
+        )
+
+    return ClassifierConfig(
+        mode=mode,
+        model=model,
+        local_model_dir=local_model_dir,
+        provider=provider,
+        api_token=api_token,
+        endpoint=endpoint,
+        auth_header=auth_header,
+        timeout_seconds=timeout_seconds,
+        offline_mode=offline_mode,
+    )
 
 
 def load_runtime_config(path: Path = CONFIG_PATH) -> RuntimeConfig:
@@ -123,6 +223,7 @@ def load_runtime_config(path: Path = CONFIG_PATH) -> RuntimeConfig:
         raise RuntimeConfigError("request_timeout_seconds must be > 0")
 
     prompt_logging_enabled = bool(logging_cfg.get("store_prompts", False))
+    classifier = _load_classifier_config(raw)
 
     return RuntimeConfig(
         provider_name=provider_name,
@@ -134,6 +235,7 @@ def load_runtime_config(path: Path = CONFIG_PATH) -> RuntimeConfig:
         policy_mode=policy_mode,
         request_timeout_seconds=timeout,
         prompt_logging_enabled=prompt_logging_enabled,
+        classifier=classifier,
     )
 
 
@@ -144,6 +246,17 @@ def runtime_config_to_dict(config: RuntimeConfig) -> Dict[str, Any]:
             "model": config.provider_model,
             "base_url": config.provider_base_url,
             "api_key_env": config.provider_api_key_env,
+        },
+        "classifier": {
+            "mode": config.classifier.mode,
+            "model": config.classifier.model,
+            "local_model_dir": config.classifier.local_model_dir,
+            "provider": config.classifier.provider,
+            "api_token": config.classifier.api_token,
+            "endpoint": config.classifier.endpoint,
+            "auth_header": config.classifier.auth_header,
+            "timeout_seconds": config.classifier.timeout_seconds,
+            "offline_mode": config.classifier.offline_mode,
         },
         "server": {
             "host": config.server_host,

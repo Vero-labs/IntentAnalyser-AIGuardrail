@@ -22,23 +22,23 @@ app = FastAPI(
 )
 
 # 1. Trusted Host Middleware (prevent Host header attacks)
+# Configure via TRUSTED_HOSTS env var (comma-separated), e.g. "localhost,myapp.render.com"
+_default_trusted = "localhost,127.0.0.1"
+_trusted_hosts = [h.strip() for h in os.getenv("TRUSTED_HOSTS", _default_trusted).split(",") if h.strip()]
 app.add_middleware(
-    TrustedHostMiddleware, 
-    allowed_hosts=["localhost", "127.0.0.1", "*.example.com"] # Update for production
+    TrustedHostMiddleware,
+    allowed_hosts=_trusted_hosts,
 )
 
 # 2. CORS Middleware (Restrict cross-origin requests)
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
-]
+# Configure via CORS_ORIGINS env var (comma-separated), or set to "*" to allow all
+_default_origins = "http://localhost,http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000"
+_cors_origins_raw = os.getenv("CORS_ORIGINS", _default_origins)
+_cors_origins = ["*"] if _cors_origins_raw.strip() == "*" else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

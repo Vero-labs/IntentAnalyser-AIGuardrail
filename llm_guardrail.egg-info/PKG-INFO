@@ -1,3 +1,42 @@
+Metadata-Version: 2.4
+Name: llm-guardrail
+Version: 4.0.0
+Summary: AI safety guardrail — intent analysis, prompt injection detection, and policy enforcement for LLM applications
+Author: Vero Labs
+License: MIT
+Project-URL: Homepage, https://github.com/Vero-labs/IntentAnalyser-AIGuardrail
+Project-URL: Repository, https://github.com/Vero-labs/IntentAnalyser-AIGuardrail
+Project-URL: Documentation, https://github.com/Vero-labs/IntentAnalyser-AIGuardrail/tree/main/docs
+Project-URL: Issues, https://github.com/Vero-labs/IntentAnalyser-AIGuardrail/issues
+Keywords: ai,guardrail,llm,safety,intent-analysis,prompt-injection
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Security
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Framework :: FastAPI
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.100.0
+Requires-Dist: uvicorn>=0.22.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: pyyaml
+Requires-Dist: rich>=13.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: ruff>=0.4.0; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: httpx; extra == "dev"
+Provides-Extra: build
+Requires-Dist: pyinstaller>=6.0; extra == "build"
+
 
 # Intent Analyzer Gateway 🛡️
 
