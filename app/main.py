@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Intent Analyzer Guardrail",
     description="Production-grade Intent Analysis with Multi-Layer Detection",
-    version="4.0.0"
+    version="4.0.1"
 )
 
 # 1. Trusted Host Middleware (prevent Host header attacks)
