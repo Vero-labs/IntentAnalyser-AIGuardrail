@@ -1,2 +1,0 @@
-[console_scripts]
-guardrail = app.policy_cli:main

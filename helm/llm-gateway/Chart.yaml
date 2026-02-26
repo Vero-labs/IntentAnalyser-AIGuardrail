@@ -2,5 +2,5 @@ apiVersion: v2
 name: llm-gateway
 description: Self-hosted LLM gateway and guardrail service ("NGINX for LLMs")
 type: application
-version: 0.1.0
-appVersion: "4.0.0"
+version: 0.2.0
+appVersion: "4.0.1"
