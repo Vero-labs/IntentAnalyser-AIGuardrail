@@ -1,23 +1,18 @@
 agent:
-  name: my-internal-bot
+  name: assistant-agent
 allowed_intents:
 - info.query
 - coding.question
-- code.review
 - debugging.help
 blocked_intents:
 - financial.advice
 - political.discussion
 - medical.advice
+- security.prompt_injection
+- security.pii_exfiltration
 confidence:
-  threshold: 0.6
+  threshold: 0.75
   fallback: block
 roles:
   admin:
     allow: ALL
-  general:
-    allow:
-    - info.query
-    - coding.question
-    - code.review
-    - debugging.help

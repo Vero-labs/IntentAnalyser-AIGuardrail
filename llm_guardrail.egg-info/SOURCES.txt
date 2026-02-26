@@ -3,9 +3,11 @@
 .gitignore
 AI Guardrail.code-workspace
 Dockerfile
+Makefile
 README.md
 app.log
 cli_dashboard.py
+docker-compose.dev.yml
 docker-compose.gateway.yml
 docker-compose.yml
 guardrail
@@ -18,6 +20,9 @@ requirements.txt
 server.log
 sidecar.log
 stress_test_results.json
+.github/workflows/ci.yml
+.github/workflows/docker-publish.yml
+.github/workflows/release.yml
 app/__init__.py
 app/main.py
 app/policy_cli.py

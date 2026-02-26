@@ -1,12 +1,18 @@
 """
-Tri-Axis Intent Analyzer — API Routes.
+Guardrail Control Plane — API Routes.
 
-Pipeline:
-  1. Deterministic risk routing (regex + lexicons + keyword checks)
-  2. Fast-safe bypass for trivial benign prompts
-  3. Zero-shot detector (only if deterministic routing is inconclusive)
-  4. Tier mapping
-  5. Classic YAML policy enforcement (main.yaml)
+Dual-gate architecture:
+  Pre-LLM (Input Guard):
+    1. Deterministic risk routing (regex + lexicons + keyword checks)
+    2. Fast-safe bypass for trivial benign prompts
+    3. Zero-shot detector (only if deterministic routing is inconclusive)
+    4. Tier mapping + Classic YAML policy enforcement
+
+  Post-LLM (Action Validator):
+    5. Extract structured actions from LLM response
+    6. Validate each action against capability-scoped policy
+    7. Filter/block denied actions
+    8. Audit every step
 
 Output is deterministic: intent, confidence, tier, decision.
 Trace available via ?debug=true.
@@ -24,8 +30,18 @@ from fastapi.responses import JSONResponse, Response
 
 from app.core.cache import CacheService
 from app.core.rate_limit import RateLimiter
+from app.core.capabilities import Capability
 from app.core.taxonomy import IntentCategory, IntentTier
+from app.core.tool_registry import build_default_registry
+from app.schemas.action import (
+    ActionProposal,
+    ActionValidationRequest,
+    ActionValidationResponse,
+    AuditEvent,
+)
 from app.schemas.intent import AnalysisBreakdown, IntentRequest, IntentResponse
+from app.services.action_validator import ActionValidator
+from app.services.audit import AuditLogger
 from app.services.classic_policy import (
     POLICY_PATH,
     ClassicPolicyError,
@@ -34,6 +50,12 @@ from app.services.classic_policy import (
 )
 from app.services.detectors.regex import RegexDetector
 from app.services.detectors.zeroshot import ZeroShotDetector
+from app.services.policy_engine import (
+    AgentPolicy,
+    PolicyEngine,
+    SandboxConfig,
+    load_policy_from_config,
+)
 from app.services.priority_engine import PriorityEngine
 from app.services.runtime_config import (
     CONFIG_PATH,
@@ -42,6 +64,7 @@ from app.services.runtime_config import (
     load_runtime_config,
     read_provider_api_key,
 )
+from app.services.sandbox import SessionSandbox
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,8 +73,18 @@ classifiers = {}
 cache_service = CacheService()
 rate_limiter = RateLimiter(requests_per_minute=6000)
 
+# ── Control Plane components (initialized at startup) ─────────────────────────
+tool_registry = build_default_registry()
+action_validator: ActionValidator | None = None
+session_sandbox: SessionSandbox | None = None
+audit_logger = AuditLogger()
+
+
 @router.on_event("startup")
 async def startup_event():
+    global action_validator, session_sandbox
+
+    # Input Guard: classifiers
     logger.info("Initializing Classifiers...")
     classifiers["regex"] = RegexDetector()
     classifiers["zeroshot"] = ZeroShotDetector()
@@ -59,6 +92,54 @@ async def startup_event():
     await classifiers["regex"].load()
     await classifiers["zeroshot"].load()
     logger.info("Classifiers Initialized.")
+
+    # Control Plane: policy engine + action validator + sandbox
+    logger.info("Initializing Control Plane...")
+    try:
+        runtime_config = load_runtime_config(CONFIG_PATH)
+        config_dict = _load_control_plane_config()
+        agent_policy = load_policy_from_config(config_dict)
+    except Exception:
+        logger.warning("No control plane config found. Using default policy.")
+        agent_policy = AgentPolicy(
+            agent_name="default-agent",
+            allowed_capabilities=list(Capability),
+            denied_capabilities=[],
+            sandbox=SandboxConfig(),
+        )
+
+    policy_engine = PolicyEngine(tool_registry, agent_policy)
+    action_validator = ActionValidator(policy_engine)
+    session_sandbox = SessionSandbox(
+        max_actions=agent_policy.sandbox.max_actions_per_session,
+        max_chain_depth=agent_policy.sandbox.max_chain_depth,
+        timeout_seconds=agent_policy.sandbox.timeout_seconds,
+        budget_limit=agent_policy.sandbox.budget_limit_usd,
+    )
+    logger.info(
+        "Control Plane Initialized: agent=%s capabilities=%s tools=%d",
+        agent_policy.agent_name,
+        [c.value for c in agent_policy.allowed_capabilities],
+        len(tool_registry),
+    )
+
+
+def _load_control_plane_config() -> dict[str, Any]:
+    """Load the control plane config sections from guardrail.config.yaml."""
+    try:
+        config = load_runtime_config(CONFIG_PATH)
+    except RuntimeConfigError:
+        return {}
+
+    # Try to load the raw YAML to get capabilities/tools/sandbox sections
+    import yaml
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception:
+        raw = {}
+
+    return raw
 
 # Engines
 priority_engine = PriorityEngine()
@@ -845,6 +926,9 @@ async def analyze_intent(request: IntentRequest, debug: bool = Query(False)):
 
 @router.post("/proxy/openai/v1/chat/completions", dependencies=[Depends(rate_limiter)])
 async def proxy_openai_chat_completions(request: Request):
+    proxy_start = time.perf_counter()
+    audit_event = AuditEvent()
+
     try:
         payload = await request.json()
     except Exception as exc:
@@ -861,11 +945,25 @@ async def proxy_openai_chat_completions(request: Request):
         )
 
     user_role = _extract_proxy_role(payload)
+    session_id = payload.get("metadata", {}).get("session_id", "") if isinstance(payload.get("metadata"), dict) else ""
+    audit_event.original_prompt = prompt_text
+    audit_event.session_id = session_id
+
+    # ── Pre-LLM Gate (Input Guard) ────────────────────────────────────────
+    input_guard_start = time.perf_counter()
     policy_result = await analyze_intent(
         IntentRequest(text=prompt_text, user_role=user_role),
         debug=False,
     )
+    audit_event.input_guard_time_ms = round((time.perf_counter() - input_guard_start) * 1000, 2)
+    audit_event.input_guard_decision = policy_result.get("decision", "allow")
+    audit_event.input_guard_reason = policy_result.get("reason")
+    audit_event.input_guard_intent = policy_result.get("intent")
+    audit_event.input_guard_confidence = policy_result.get("confidence")
+
     if policy_result.get("decision") == "block":
+        audit_event.total_time_ms = round((time.perf_counter() - proxy_start) * 1000, 2)
+        audit_logger.log_event(audit_event)
         return JSONResponse(
             status_code=403,
             content={
@@ -879,6 +977,23 @@ async def proxy_openai_chat_completions(request: Request):
                 }
             },
         )
+
+    # ── Sandbox check ─────────────────────────────────────────────────────
+    if session_sandbox and session_id:
+        within_limits, limit_reason = session_sandbox.check_limits(session_id)
+        if not within_limits:
+            audit_event.total_time_ms = round((time.perf_counter() - proxy_start) * 1000, 2)
+            audit_logger.log_event(audit_event)
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "type": "sandbox_limit",
+                        "message": "Session sandbox limit exceeded",
+                        "reason": limit_reason,
+                    }
+                },
+            )
 
     try:
         runtime_config = load_runtime_config(CONFIG_PATH)
@@ -916,6 +1031,8 @@ async def proxy_openai_chat_completions(request: Request):
         if header_value:
             forward_headers[passthrough_header] = header_value
 
+    # ── LLM Call (Data Plane) ─────────────────────────────────────────────
+    llm_start = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=runtime_config.request_timeout_seconds) as client:
             upstream_response = await client.post(
@@ -925,6 +1042,67 @@ async def proxy_openai_chat_completions(request: Request):
             )
     except httpx.RequestError as exc:
         raise HTTPException(status_code=502, detail=f"Upstream provider request failed: {exc}") from exc
+    audit_event.llm_time_ms = round((time.perf_counter() - llm_start) * 1000, 2)
+
+    # ── Post-LLM Gate (Action Validator) ──────────────────────────────────
+    if action_validator and upstream_response.status_code == 200:
+        try:
+            llm_response_data = upstream_response.json()
+        except Exception:
+            llm_response_data = None
+
+        if isinstance(llm_response_data, dict):
+            policy_start = time.perf_counter()
+            session_stats = session_sandbox.get_session_stats(session_id) if session_sandbox and session_id else {}
+
+            filtered_response, decisions, proposals = action_validator.validate_and_filter_response(
+                llm_response_data,
+                role=user_role,
+                session_action_count=session_stats.get("action_count", 0),
+                session_chain_depth=session_stats.get("chain_depth", 0),
+            )
+            audit_event.policy_eval_time_ms = round((time.perf_counter() - policy_start) * 1000, 2)
+            audit_event.proposed_actions = proposals
+            audit_event.action_decisions = decisions
+
+            # Record allowed actions in sandbox
+            if session_sandbox and session_id and proposals:
+                for i, (proposal, decision) in enumerate(zip(proposals, decisions)):
+                    if decision.allowed:
+                        tool_def = tool_registry.get(proposal.tool)
+                        caps = tool_def.capabilities if tool_def else []
+                        session_sandbox.record_action(session_id, proposal.tool, caps)
+
+            # If any actions were blocked, add guardrail metadata to response
+            blocked_decisions = [d for d in decisions if not d.allowed]
+            if blocked_decisions:
+                filtered_response["_guardrail"] = {
+                    "actions_proposed": len(proposals),
+                    "actions_blocked": len(blocked_decisions),
+                    "blocked_details": [
+                        {"tool": d.tool, "reason": d.reason, "policy_rule": d.policy_rule}
+                        for d in blocked_decisions
+                    ],
+                }
+                logger.warning(
+                    "Post-LLM gate blocked %d/%d actions",
+                    len(blocked_decisions), len(proposals),
+                )
+
+            audit_event.total_time_ms = round((time.perf_counter() - proxy_start) * 1000, 2)
+            audit_logger.log_event(audit_event)
+
+            import json as _json
+            return Response(
+                content=_json.dumps(filtered_response).encode(),
+                status_code=upstream_response.status_code,
+                media_type="application/json",
+            )
+
+    # Passthrough (no structured actions found, or non-200)
+    audit_event.total_time_ms = round((time.perf_counter() - proxy_start) * 1000, 2)
+    audit_event.action_extraction_method = "none"
+    audit_logger.log_event(audit_event)
 
     media_type = upstream_response.headers.get("content-type", "application/json")
     return Response(
@@ -934,10 +1112,88 @@ async def proxy_openai_chat_completions(request: Request):
     )
 
 
+# ── Control Plane Endpoints ───────────────────────────────────────────────────
+
+@router.post("/action/validate", dependencies=[Depends(rate_limiter)])
+async def validate_action(req: ActionValidationRequest):
+    """Validate a proposed action against the policy engine (no LLM involved)."""
+    if action_validator is None:
+        raise HTTPException(status_code=503, detail="Control plane not initialized")
+
+    proposal = ActionProposal(tool=req.tool, parameters=req.parameters)
+    decisions = action_validator.validate_actions(
+        [proposal],
+        role=req.role,
+        session_action_count=0,
+        session_chain_depth=0,
+    )
+    decision = decisions[0]
+    return ActionValidationResponse(
+        tool=decision.tool,
+        allowed=decision.allowed,
+        reason=decision.reason,
+        capability=decision.capability,
+        policy_rule=decision.policy_rule,
+    )
+
+
+@router.get("/audit/{session_id}")
+async def get_audit_trail(session_id: str):
+    """Retrieve the full audit trail for a session."""
+    events = audit_logger.get_session_trail(session_id)
+    return {
+        "session_id": session_id,
+        "event_count": len(events),
+        "events": [e.model_dump() for e in events],
+    }
+
+
+@router.get("/audit")
+async def get_recent_audit(limit: int = Query(50, ge=1, le=500)):
+    """Get recent audit events."""
+    events = audit_logger.get_recent_events(limit=limit)
+    return {
+        "event_count": len(events),
+        "events": [e.model_dump() for e in events],
+    }
+
+
+@router.get("/sandbox/{session_id}")
+async def get_sandbox_stats(session_id: str):
+    """Get sandbox stats for a session."""
+    if session_sandbox is None:
+        raise HTTPException(status_code=503, detail="Sandbox not initialized")
+    return session_sandbox.get_session_stats(session_id)
+
+
+@router.get("/tools")
+async def list_tools():
+    """List all registered tools and their capabilities."""
+    tools = tool_registry.list_all()
+    return {
+        "tool_count": len(tools),
+        "tools": [
+            {
+                "name": t.name,
+                "capabilities": [c.value for c in t.capabilities],
+                "description": t.description,
+                "scope_constraints": t.scope_constraints,
+            }
+            for t in tools
+        ],
+    }
+
+
 @router.get("/health")
 def health():
     return {
         "status": "ok",
-        "architecture": "tri-axis",
+        "architecture": "control-plane",
         "classifiers": list(classifiers.keys()),
+        "control_plane": {
+            "action_validator": action_validator is not None,
+            "sandbox": session_sandbox is not None,
+            "tools_registered": len(tool_registry),
+            "audit": audit_logger.get_stats(),
+        },
     }

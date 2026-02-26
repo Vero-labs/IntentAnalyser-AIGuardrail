@@ -1,12 +1,66 @@
 provider:
-  name: anthropic
-  model: claude-3-5-sonnet-20241022
-  base_url: https://api.anthropic.com
-  api_key_env: ANTHROPIC_API_KEY
+  name: openai
+  model: gpt-4o-mini
+  base_url: https://api.openai.com
+  api_key_env: OPENAI_API_KEY
+classifier:
+  mode: local
+  model: distilbert-mnli
+  local_model_dir: ""
+  provider: huggingface
+  api_token: ""
+  endpoint: ""
+  auth_header: ""
+  timeout_seconds: 8.0
+  offline_mode: true
 server:
   host: 0.0.0.0
   port: 8000
-policy_mode: balanced
+policy_mode: strict
 request_timeout_seconds: 60.0
 logging:
   store_prompts: false
+
+# ── Control Plane ──────────────────────────────────────────
+agent:
+  name: assistant-agent
+
+capabilities:
+  allowed:
+    - read
+    - notify
+  denied:
+    - delete
+    - access_secret
+    - execute_external
+
+tools:
+  - name: slack.send
+    allowed: true
+    scope:
+      channel:
+        - "#ops"
+        - "#alerts"
+  - name: db.read
+    allowed: true
+    scope:
+      table:
+        - employees
+        - projects
+        - tasks
+  - name: db.write
+    allowed: false
+  - name: db.delete
+    allowed: false
+  - name: email.send
+    allowed: true
+  - name: http.request
+    allowed: false
+  - name: secret.read
+    allowed: false
+
+sandbox:
+  max_actions_per_session: 20
+  max_chain_depth: 5
+  timeout_seconds: 120
+  budget_limit_usd: 1.00
