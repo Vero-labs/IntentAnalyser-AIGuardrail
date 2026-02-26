@@ -66,6 +66,32 @@ If you set `classifier.mode=hosted`, also pass:
    - `helm/llm-gateway/values-staging.yaml`
    - `helm/llm-gateway/values-prod.yaml`
 
+### Helm Usage (How It Works)
+
+`helm/llm-gateway` packages the service into Kubernetes resources:
+- `templates/deployment.yaml`: runs the FastAPI gateway container and mounts config files.
+- `templates/configmap.yaml`: injects `guardrail.config.yaml` + policy (`main.yaml`) from Helm values.
+- `templates/service.yaml`: exposes the app internally.
+- `templates/ingress.yaml`: optional external HTTP routing.
+- `templates/serviceaccount.yaml`: dedicated service account for least-privilege identity.
+
+Recommended install flow:
+```bash
+kubectl create secret generic llm-gateway-secrets \
+  --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"
+
+helm upgrade --install llm-gateway ./helm/llm-gateway \
+  -f helm/llm-gateway/values-staging.yaml \
+  --set image.repository=intent-llm-gateway \
+  --set image.tag=latest \
+  --set envFromSecret=llm-gateway-secrets
+```
+
+Notes:
+- Runtime config and policy can be versioned in `values*.yaml` and rolled out via Helm.
+- ConfigMap checksum annotation is enabled by default, so config changes trigger pod restarts.
+- Prefer env-specific values files (`local`, `staging`, `prod`) instead of large `--set` chains.
+
 ## Local Config Packs
 
 Config files are saved in this repo under `configs/` so you can move between environments and platforms:
@@ -85,6 +111,17 @@ Quick environment switch:
 ./scripts/run-with-config.sh staging
 ./scripts/run-with-config.sh prod
 ```
+
+## Repository Layout (Core Components)
+
+- `app/main.py`: FastAPI app bootstrap + middleware/security headers.
+- `app/api/routes.py`: request entrypoints (`/intent`, proxy routes, health checks).
+- `app/services/`: detection + policy engines (regex, zero-shot, runtime config, policy evaluators).
+- `app/core/`: shared infrastructure (env loading, cache, taxonomy, rate limiting).
+- `configs/`: environment-specific runtime YAML (`local/staging/prod`) + shared policy.
+- `helm/llm-gateway/`: Kubernetes packaging for gateway deployment.
+- `docker-compose*.yml`, `Dockerfile`, `render.yaml`: local and cloud deployment manifests.
+- `tests/`: policy and signal validation tests plus stress scripts.
 
 ---
 
@@ -188,7 +225,7 @@ Push this repo to GitHub and link it to a Render Web Service. The included `rend
 
 3.  **Run Tests**:
     ```bash
-    ./tests/run_tests.sh
+    python -m pytest tests/ -v
     ```
 
 ---
